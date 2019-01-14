@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\IEC61850.NET.core.2.0\IEC61850.NET.core.2.0.csproj" />
+    <ProjectReference Include="..\IEC61850.NET.core.2.0\IEC61850.NET.csproj" />
   </ItemGroup>
 
 </Project>

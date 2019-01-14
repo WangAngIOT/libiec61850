@@ -1,0 +1,15 @@
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\bin\Debug\netcoreapp2.0\model.cfg
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\bin\Debug\netcoreapp2.0\server_example1.deps.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\bin\Debug\netcoreapp2.0\server_example1.runtimeconfig.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\bin\Debug\netcoreapp2.0\server_example1.runtimeconfig.dev.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\bin\Debug\netcoreapp2.0\server_example1.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\bin\Debug\netcoreapp2.0\server_example1.pdb
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\bin\Debug\netcoreapp2.0\IEC61850.NET.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\bin\Debug\netcoreapp2.0\IEC61850.NET.pdb
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\obj\Debug\netcoreapp2.0\server_example1.csprojAssemblyReference.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\obj\Debug\netcoreapp2.0\server_example1.csproj.CoreCompileInputs.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\obj\Debug\netcoreapp2.0\server_example1.AssemblyInfoInputs.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\obj\Debug\netcoreapp2.0\server_example1.AssemblyInfo.cs
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\obj\Debug\netcoreapp2.0\server_example1.csproj.CopyComplete
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\obj\Debug\netcoreapp2.0\server_example1.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\server_example1\obj\Debug\netcoreapp2.0\server_example1.pdb

@@ -266,13 +266,19 @@ namespace IEC61850
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr CDC_INC_create(string name, IntPtr parent, uint options, uint controlOptions);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            [DllImport("iec61850.dll", CallingConvention = CallingConvention.Cdecl)]
+            static extern IntPtr CDC_SPC_create(string name, IntPtr parent, uint options, uint controlOptions);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr CDC_LPL_create(string name, IntPtr parent, uint options);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr CDC_DPL_create(string name, IntPtr parent, uint options);
 
-			public const int CDC_OPTION_DESC = (1 << 2);
+            [DllImport("iec61850.dll", CallingConvention = CallingConvention.Cdecl)]
+            static extern IntPtr CDC_ASG_create(string name, IntPtr parent, uint options, bool isIntegerNotFloat);
+
+            public const int CDC_OPTION_DESC = (1 << 2);
 			public const int CDC_OPTION_DESC_UNICODE = (1 << 3);
 			public const int CDC_OPTION_AC_DLNDA = (1 << 4);
 			public const int CDC_OPTION_AC_DLN = (1 << 5);
@@ -330,7 +336,17 @@ namespace IEC61850
 					return null;
 			}
 
-			public static DataObject Create_CDC_LPL(ModelNode parent, string name, uint options)
+            public static DataObject Create_CDC_SPC(ModelNode parent, string name, uint options, uint controlOptions)
+            {
+                IntPtr self = CDC_SPC_create(name, parent.self, options, controlOptions);
+
+                if (self != IntPtr.Zero)
+                    return new DataObject(self);
+                else
+                    return null;
+            }
+
+            public static DataObject Create_CDC_LPL(ModelNode parent, string name, uint options)
 			{
 				IntPtr self = CDC_LPL_create(name, parent.self, options);
 
@@ -340,7 +356,7 @@ namespace IEC61850
 					return null;
 			}
 
-			public static DataObject Create_CDC_DPL(ModelNode parent, string name, uint options)
+            public static DataObject Create_CDC_DPL(ModelNode parent, string name, uint options)
 			{
 				IntPtr self = CDC_DPL_create(name, parent.self, options);
 
@@ -349,7 +365,17 @@ namespace IEC61850
 				else
 					return null;
 			}
-		}
+
+            public static DataObject Create_CDC_ASG(ModelNode parent, string name, uint options, bool isIntegerNotFloat)
+            {
+                IntPtr self = CDC_ASG_create(name, parent.self, options, isIntegerNotFloat);
+
+                if (self != IntPtr.Zero)
+                    return new DataObject(self);
+                else
+                    return null;
+            }
+        }
 
 		public class DataObject : ModelNode
 		{

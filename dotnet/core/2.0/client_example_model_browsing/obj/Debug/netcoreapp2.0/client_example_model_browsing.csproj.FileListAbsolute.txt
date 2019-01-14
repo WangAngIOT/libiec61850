@@ -1,0 +1,13 @@
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\bin\Debug\netcoreapp2.0\client_example_model_browsing.deps.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\bin\Debug\netcoreapp2.0\client_example_model_browsing.runtimeconfig.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\bin\Debug\netcoreapp2.0\client_example_model_browsing.runtimeconfig.dev.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\bin\Debug\netcoreapp2.0\client_example_model_browsing.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\bin\Debug\netcoreapp2.0\client_example_model_browsing.pdb
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\bin\Debug\netcoreapp2.0\IEC61850.NET.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\bin\Debug\netcoreapp2.0\IEC61850.NET.pdb
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\obj\Debug\netcoreapp2.0\client_example_model_browsing.csproj.CoreCompileInputs.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\obj\Debug\netcoreapp2.0\client_example_model_browsing.AssemblyInfoInputs.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\obj\Debug\netcoreapp2.0\client_example_model_browsing.AssemblyInfo.cs
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\obj\Debug\netcoreapp2.0\client_example_model_browsing.csproj.CopyComplete
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\obj\Debug\netcoreapp2.0\client_example_model_browsing.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_model_browsing\obj\Debug\netcoreapp2.0\client_example_model_browsing.pdb

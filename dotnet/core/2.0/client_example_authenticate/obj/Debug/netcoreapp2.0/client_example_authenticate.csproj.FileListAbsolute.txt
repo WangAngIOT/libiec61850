@@ -1,0 +1,14 @@
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\bin\Debug\netcoreapp2.0\client_example_authenticate.deps.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\bin\Debug\netcoreapp2.0\client_example_authenticate.runtimeconfig.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\bin\Debug\netcoreapp2.0\client_example_authenticate.runtimeconfig.dev.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\bin\Debug\netcoreapp2.0\client_example_authenticate.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\bin\Debug\netcoreapp2.0\client_example_authenticate.pdb
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\bin\Debug\netcoreapp2.0\IEC61850.NET.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\bin\Debug\netcoreapp2.0\IEC61850.NET.pdb
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\obj\Debug\netcoreapp2.0\client_example_authenticate.csprojAssemblyReference.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\obj\Debug\netcoreapp2.0\client_example_authenticate.csproj.CoreCompileInputs.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\obj\Debug\netcoreapp2.0\client_example_authenticate.AssemblyInfoInputs.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\obj\Debug\netcoreapp2.0\client_example_authenticate.AssemblyInfo.cs
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\obj\Debug\netcoreapp2.0\client_example_authenticate.csproj.CopyComplete
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\obj\Debug\netcoreapp2.0\client_example_authenticate.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_authenticate\obj\Debug\netcoreapp2.0\client_example_authenticate.pdb

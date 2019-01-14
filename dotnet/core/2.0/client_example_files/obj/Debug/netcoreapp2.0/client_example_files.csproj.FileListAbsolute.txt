@@ -1,0 +1,14 @@
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\bin\Debug\netcoreapp2.0\client_example_files.deps.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\bin\Debug\netcoreapp2.0\client_example_files.runtimeconfig.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\bin\Debug\netcoreapp2.0\client_example_files.runtimeconfig.dev.json
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\bin\Debug\netcoreapp2.0\client_example_files.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\bin\Debug\netcoreapp2.0\client_example_files.pdb
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\bin\Debug\netcoreapp2.0\IEC61850.NET.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\bin\Debug\netcoreapp2.0\IEC61850.NET.pdb
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\obj\Debug\netcoreapp2.0\client_example_files.csprojAssemblyReference.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\obj\Debug\netcoreapp2.0\client_example_files.csproj.CoreCompileInputs.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\obj\Debug\netcoreapp2.0\client_example_files.AssemblyInfoInputs.cache
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\obj\Debug\netcoreapp2.0\client_example_files.AssemblyInfo.cs
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\obj\Debug\netcoreapp2.0\client_example_files.csproj.CopyComplete
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\obj\Debug\netcoreapp2.0\client_example_files.dll
+D:\Coding\dotnet\libiec61850\dotnet\core\2.0\client_example_files\obj\Debug\netcoreapp2.0\client_example_files.pdb
