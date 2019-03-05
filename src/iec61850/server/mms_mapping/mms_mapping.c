@@ -2338,6 +2338,8 @@ mmsReadHandler(void* parameter, MmsDomain* domain, char* variableId, MmsServerCo
 
                         char* elementName = MmsMapping_getNextNameElement(reportName);
 
+                        ReportControl_readAccess(rc, elementName);
+
                         MmsValue* value = NULL;
 
                         if (elementName != NULL)
@@ -2479,8 +2481,8 @@ mmsReadAccessHandler (void* parameter, MmsDomain* domain, char* variableId, MmsS
                 fc = FunctionalConstraint_fromString(separator + 1);
 
                 if (fc == IEC61850_FC_BR || fc == IEC61850_FC_US ||
-                        fc == IEC61850_FC_MS || fc == IEC61850_FC_RP ||
-                        fc == IEC61850_FC_LG)
+                    fc == IEC61850_FC_MS || fc == IEC61850_FC_RP ||
+                    fc == IEC61850_FC_LG || fc == IEC61850_FC_GO)
                 {
                     return DATA_ACCESS_ERROR_SUCCESS;
                 }

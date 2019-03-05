@@ -12,7 +12,7 @@ ENABLE_TESTING()
 
 set(LIB_VERSION_MAJOR "1")
 set(LIB_VERSION_MINOR "3")
-set(LIB_VERSION_PATCH "1")
+set(LIB_VERSION_PATCH "3")
 set(LIB_VERSION "${LIB_VERSION_MAJOR}.${LIB_VERSION_MINOR}.${LIB_VERSION_PATCH}")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/third_party/cmake/modules/")
@@ -41,6 +41,7 @@ option(CONFIG_IEC61850_CONTROL_SERVICE "Build with support for IEC 61850 control
 option(CONFIG_IEC61850_REPORT_SERVICE "Build with support for IEC 61850 reporting services" ON)
 option(CONFIG_IEC61850_LOG_SERVICE "Build with support for IEC 61850 logging services" ON)
 option(CONFIG_IEC61850_SETTING_GROUPS "Build with support for IEC 61850 setting group services" ON)
+option(CONFIG_IEC61850_SUPPORT_USER_READ_ACCESS_CONTROL "Allow user provided callback to control read access" ON)
 
 set(CONFIG_REPORTING_DEFAULT_REPORT_BUFFER_SIZE "65536" CACHE STRING "Default buffer size for buffered reports in byte" )
 
@@ -115,11 +116,11 @@ set(API_HEADERS
     ${CMAKE_CURRENT_BINARY_DIR}/config/stack_config.h
 )
 
-if(MSVC)
+if(MSVC AND MSVC_VERSION LESS 1800)
     include_directories(
         ${CMAKE_CURRENT_LIST_DIR}/src/vs
     )
-endif(MSVC)
+endif(MSVC AND MSVC_VERSION LESS 1800)
 
 if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/third_party/mbedtls/mbedtls-2.6.0)
 set(WITH_MBEDTLS 1)
@@ -142,6 +143,10 @@ include_directories(
 )
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/hal")
+
+if(DEBUG)
+	set(CMAKE_BUILD_TYPE Debug)
+endif(DEBUG)
 
 if(BUILD_EXAMPLES)
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/examples)

@@ -1314,19 +1314,31 @@ MmsConnection_connect(MmsConnection self, MmsError* mmsError, const char* server
     waitForConnectResponse(self);
 
     if (DEBUG_MMS_CLIENT)
-        printf("MmsConnection_connect: received response conState: %i\n", getConnectionState(self));
+        printf("MmsConnection_connect: received response conState: %i assocState: %i\n", getConnectionState(self), getAssociationState(self));
 
     if (getConnectionState(self) == MMS_CON_ASSOCIATED) {
-        mmsClient_parseInitiateResponse(self);
+        if (mmsClient_parseInitiateResponse(self) == false) {
+            if (DEBUG_MMS_CLIENT)
+                printf("MmsConnection_connect: failed to parse initiate response\n");
+
+            setAssociationState(self, MMS_STATE_CLOSED);
+
+            setConnectionState(self, MMS_CON_ASSOCIATION_FAILED);
+        }
+        else {
+            setAssociationState(self, MMS_STATE_CONNECTED);
+        }
 
         releaseResponse(self);
 
-        setAssociationState(self, MMS_STATE_CONNECTED);
+
     }
-    else
+    else {
         setAssociationState(self, MMS_STATE_CLOSED);
 
-    setConnectionState(self, MMS_CON_IDLE);
+        setConnectionState(self, MMS_CON_ASSOCIATION_FAILED);
+    }
+
 
     if (DEBUG_MMS_CLIENT)
         printf("MmsConnection_connect: states: con %i ass %i\n", getConnectionState(self), getAssociationState(self));
@@ -1590,6 +1602,34 @@ MmsConnection_readVariable(MmsConnection self, MmsError* mmsError,
 }
 
 MmsValue*
+MmsConnection_readVariableComponent(MmsConnection self, MmsError* mmsError,
+        const char* domainId, const char* itemId, const char* componentId)
+{
+    MmsValue* value = NULL;
+
+    if (getAssociationState(self) != MMS_STATE_CONNECTED) {
+        *mmsError = MMS_ERROR_CONNECTION_LOST;
+        goto exit_function;
+    }
+
+    ByteBuffer* payload = IsoClientConnection_allocateTransmitBuffer(self->isoClient);
+
+    uint32_t invokeId = getNextInvokeId(self);
+
+    mmsClient_createReadRequestComponent(invokeId, domainId, itemId, componentId, payload);
+
+    ByteBuffer* responseMessage = sendRequestAndWaitForResponse(self, invokeId, payload, mmsError);
+
+    if (responseMessage != NULL)
+        value = mmsClient_parseReadResponse(self->lastResponse, NULL, false);
+
+    releaseResponse(self);
+
+    exit_function:
+    return value;
+}
+
+MmsValue*
 MmsConnection_readArrayElements(MmsConnection self, MmsError* mmsError,
         const char* domainId, const char* itemId,
         uint32_t startIndex, uint32_t numberOfElements)
@@ -1697,8 +1737,12 @@ MmsConnection_readNamedVariableListValues(MmsConnection self, MmsError* mmsError
 
     ByteBuffer* responseMessage = sendRequestAndWaitForResponse(self, invokeId, payload, mmsError);
 
-    if (responseMessage != NULL)
+    if (responseMessage != NULL) {
         value = mmsClient_parseReadResponse(self->lastResponse, NULL, true);
+
+        if (value == NULL)
+            *mmsError = MMS_ERROR_PARSING_RESPONSE;
+    }
 
     releaseResponse(self);
 
