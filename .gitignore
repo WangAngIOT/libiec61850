@@ -1,3 +1,5 @@
 build/
 cmake-build-debug/
 .idea/
+dotnet/.vs/
+dotnet/core/2.0/.vs/
