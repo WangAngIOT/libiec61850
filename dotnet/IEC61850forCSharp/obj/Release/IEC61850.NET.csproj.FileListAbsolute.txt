@@ -1,0 +1,4 @@
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\obj\Release\IEC61850.NET.csprojAssemblyReference.cache
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\obj\Release\IEC61850.NET.csproj.CoreCompileInputs.cache
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\bin\Release\IEC61850.NET.dll
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\obj\Release\IEC61850.NET.dll

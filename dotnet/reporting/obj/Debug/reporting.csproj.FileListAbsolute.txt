@@ -1,0 +1,8 @@
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\reporting\bin\Debug\reporting.exe
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\reporting\bin\Debug\reporting.pdb
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\reporting\bin\Debug\iec61850dotnet.dll
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\reporting\bin\Debug\iec61850dotnet.pdb
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\reporting\obj\Debug\reporting.csproj.CoreCompileInputs.cache
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\reporting\obj\Debug\reporting.csproj.CopyComplete
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\reporting\obj\Debug\reporting.exe
+D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\reporting\obj\Debug\reporting.pdb
