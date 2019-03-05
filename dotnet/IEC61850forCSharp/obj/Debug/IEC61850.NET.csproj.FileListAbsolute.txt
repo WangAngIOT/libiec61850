@@ -1,6 +1,0 @@
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\bin\Debug\iec61850dotnet.dll
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\bin\Debug\iec61850dotnet.pdb
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\obj\Debug\IEC61850.NET.csprojAssemblyReference.cache
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\obj\Debug\IEC61850.NET.csproj.CoreCompileInputs.cache
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\obj\Debug\iec61850dotnet.dll
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\IEC61850forCSharp\obj\Debug\iec61850dotnet.pdb

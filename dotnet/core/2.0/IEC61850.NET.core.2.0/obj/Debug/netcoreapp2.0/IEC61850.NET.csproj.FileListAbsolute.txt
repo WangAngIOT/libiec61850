@@ -1,9 +1,0 @@
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\bin\Debug\netcoreapp2.0\IEC61850.NET.deps.json
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\bin\Debug\netcoreapp2.0\IEC61850.NET.dll
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\bin\Debug\netcoreapp2.0\IEC61850.NET.pdb
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Debug\netcoreapp2.0\IEC61850.NET.csprojAssemblyReference.cache
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Debug\netcoreapp2.0\IEC61850.NET.csproj.CoreCompileInputs.cache
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Debug\netcoreapp2.0\IEC61850.NET.AssemblyInfoInputs.cache
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Debug\netcoreapp2.0\IEC61850.NET.AssemblyInfo.cs
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Debug\netcoreapp2.0\IEC61850.NET.dll
-D:\Coding\dotnet\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Debug\netcoreapp2.0\IEC61850.NET.pdb

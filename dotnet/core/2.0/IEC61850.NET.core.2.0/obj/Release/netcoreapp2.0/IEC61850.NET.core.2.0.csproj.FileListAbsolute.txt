@@ -1,9 +1,0 @@
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Release\netcoreapp2.0\IEC61850.NET.core.2.0.csproj.CoreCompileInputs.cache
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Release\netcoreapp2.0\IEC61850.NET.core.2.0.AssemblyInfoInputs.cache
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Release\netcoreapp2.0\IEC61850.NET.core.2.0.AssemblyInfo.cs
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\bin\Release\netcoreapp2.0\IEC61850.NET.deps.json
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\bin\Release\netcoreapp2.0\IEC61850.NET.dll
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\bin\Release\netcoreapp2.0\IEC61850.NET.pdb
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Release\netcoreapp2.0\IEC61850.NET.dll
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Release\netcoreapp2.0\IEC61850.NET.pdb
-D:\Coding\IEC61850\libiec61850\libiec61850\dotnet\core\2.0\IEC61850.NET.core.2.0\obj\Release\netcoreapp2.0\IEC61850.NET.core.2.0.csprojAssemblyReference.cache
