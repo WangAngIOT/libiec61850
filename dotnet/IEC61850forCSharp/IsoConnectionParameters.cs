@@ -26,83 +26,84 @@ using System.Runtime.InteropServices;
 
 namespace IEC61850
 {
-	namespace Client
-	{
+    namespace Client
+    {
 
-		public enum AcseAuthenticationMechanism {
+        public enum AcseAuthenticationMechanism
+        {
             /** don't use authentication */
-			ACSE_AUTH_NONE = 0,
+            ACSE_AUTH_NONE = 0,
             /** use password authentication */
-    		ACSE_AUTH_PASSWORD = 1
-		}
+            ACSE_AUTH_PASSWORD = 1
+        }
 
         /// <summary>
         /// Connection parameters associated with the ISO protocol layers (transport, session, presentation, ACSE)
         /// </summary>
 		public class IsoConnectionParameters
-		{
+        {
 
             [StructLayout(LayoutKind.Sequential)]
             private struct NativeTSelector
             {
                 public byte size;
 
-                [MarshalAs(UnmanagedType.ByValArray, SizeConst=4)] public byte[] value;
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] public byte[] value;
             }
 
 
-			[StructLayout(LayoutKind.Sequential)]
-			private struct NativeSSelector
-			{
-				public byte size;
+            [StructLayout(LayoutKind.Sequential)]
+            private struct NativeSSelector
+            {
+                public byte size;
 
-				[MarshalAs(UnmanagedType.ByValArray, SizeConst=16)] public byte[] value;
-			}
+                [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)] public byte[] value;
+            }
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void IsoConnectionParameters_destroy(IntPtr self);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void IsoConnectionParameters_destroy(IntPtr self);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void IsoConnectionParameters_setRemoteApTitle(IntPtr self, string apTitle, int aeQualifier);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void IsoConnectionParameters_setRemoteApTitle(IntPtr self, string apTitle, int aeQualifier);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void IsoConnectionParameters_setRemoteAddresses(IntPtr self, UInt32 pSelector, NativeSSelector sSelector, NativeTSelector tSelector);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void IsoConnectionParameters_setRemoteAddresses(IntPtr self, UInt32 pSelector, NativeSSelector sSelector, NativeTSelector tSelector);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void IsoConnectionParameters_setLocalApTitle(IntPtr self, string apTitle, int aeQualifier);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void IsoConnectionParameters_setLocalApTitle(IntPtr self, string apTitle, int aeQualifier);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void IsoConnectionParameters_setLocalAddresses(IntPtr self, UInt32 pSelector, NativeSSelector sSelector, NativeTSelector tSelector);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void IsoConnectionParameters_setLocalAddresses(IntPtr self, UInt32 pSelector, NativeSSelector sSelector, NativeTSelector tSelector);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void IsoConnectionParameters_setAcseAuthenticationParameter(IntPtr self, IntPtr acseAuthParameter);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void IsoConnectionParameters_setAcseAuthenticationParameter(IntPtr self, IntPtr acseAuthParameter);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern IntPtr AcseAuthenticationParameter_create();
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern IntPtr AcseAuthenticationParameter_create();
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void AcseAuthenticationParameter_destroy(IntPtr self);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void AcseAuthenticationParameter_destroy(IntPtr self);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void AcseAuthenticationParameter_setAuthMechanism(IntPtr self, int mechanism);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void AcseAuthenticationParameter_setAuthMechanism(IntPtr self, int mechanism);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			private static extern void AcseAuthenticationParameter_setPassword(IntPtr self, string password);
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            private static extern void AcseAuthenticationParameter_setPassword(IntPtr self, string password);
 
-			private IntPtr self;
+            private IntPtr self;
 
-			private IntPtr authParameter = IntPtr.Zero;
+            private IntPtr authParameter = IntPtr.Zero;
 
-			internal IsoConnectionParameters (IntPtr self)
-			{
-				this.self = self;
-			}
+            internal IsoConnectionParameters(IntPtr self)
+            {
+                this.self = self;
+            }
 
-			~IsoConnectionParameters ()
-			{	
-				if (authParameter != IntPtr.Zero)
-					AcseAuthenticationParameter_destroy(authParameter);
-			}
+            ~IsoConnectionParameters()
+            {
+                if (authParameter != IntPtr.Zero)
+                    AcseAuthenticationParameter_destroy(authParameter);
+            }
 
             /// <summary>
             /// Sets the remote ap title related parameters
@@ -114,9 +115,9 @@ namespace IEC61850
             /// remote AE qualifier.
             /// </param>
 			public void SetRemoteApTitle(string apTitle, int aeQualifier)
-			{
-				IsoConnectionParameters_setRemoteApTitle(self, apTitle, aeQualifier);
-			}
+            {
+                IsoConnectionParameters_setRemoteApTitle(self, apTitle, aeQualifier);
+            }
 
             /// <summary>
             /// Sets the remote addresses for ISO layers (transport, session, presentation)
@@ -130,30 +131,30 @@ namespace IEC61850
             /// <param name='tSelector'>
             /// ISO COTP transport layer address
             /// </param>
-			public void SetRemoteAddresses (UInt32 pSelector, byte[] sSelector, byte[] tSelector)
-			{
+			public void SetRemoteAddresses(UInt32 pSelector, byte[] sSelector, byte[] tSelector)
+            {
                 if (tSelector.Length > 4)
                     throw new ArgumentOutOfRangeException("tSelector", "maximum size (4) exceeded");
 
                 NativeTSelector nativeTSelector;
-                nativeTSelector.size = (byte) tSelector.Length;
+                nativeTSelector.size = (byte)tSelector.Length;
                 nativeTSelector.value = new byte[4];
 
-                for (int i = 0; i < tSelector.Length; i++) 
+                for (int i = 0; i < tSelector.Length; i++)
                     nativeTSelector.value[i] = tSelector[i];
 
-				if (sSelector.Length > 16)
-					throw new ArgumentOutOfRangeException("sSelector", "maximum size (16) exceeded");
+                if (sSelector.Length > 16)
+                    throw new ArgumentOutOfRangeException("sSelector", "maximum size (16) exceeded");
 
-				NativeSSelector nativeSSelector;
-				nativeSSelector.size = (byte) sSelector.Length;
-				nativeSSelector.value = new byte[16];
+                NativeSSelector nativeSSelector;
+                nativeSSelector.size = (byte)sSelector.Length;
+                nativeSSelector.value = new byte[16];
 
-				for (int i = 0; i < sSelector.Length; i++)
-					nativeSSelector.value [i] = sSelector [i];
+                for (int i = 0; i < sSelector.Length; i++)
+                    nativeSSelector.value[i] = sSelector[i];
 
-				IsoConnectionParameters_setRemoteAddresses(self, pSelector, nativeSSelector, nativeTSelector);
-			}
+                IsoConnectionParameters_setRemoteAddresses(self, pSelector, nativeSSelector, nativeTSelector);
+            }
 
             /// <summary>
             /// Sets the local ap title related parameters
@@ -164,10 +165,10 @@ namespace IEC61850
             /// <param name='aeQualifier'>
             /// local AE qualifier.
             /// </param>
-			public void SetLocalApTitle (string apTitle, int aeQualifier)
-			{
-				IsoConnectionParameters_setLocalApTitle(self, apTitle, aeQualifier);
-			}
+			public void SetLocalApTitle(string apTitle, int aeQualifier)
+            {
+                IsoConnectionParameters_setLocalApTitle(self, apTitle, aeQualifier);
+            }
 
             /// <summary>
             /// Sets the local addresses for ISO layers (transport, session, presentation)
@@ -181,30 +182,30 @@ namespace IEC61850
             /// <param name='tSelector'>
             /// ISO COTP transport layer address
             /// </param>
-			public void SetLocalAddresses (UInt32 pSelector, byte[] sSelector, byte[] tSelector)
-			{
+			public void SetLocalAddresses(UInt32 pSelector, byte[] sSelector, byte[] tSelector)
+            {
                 if (tSelector.Length > 4)
                     throw new ArgumentOutOfRangeException("tSelector", "maximum size (4) exceeded");
 
                 NativeTSelector nativeTSelector;
-                nativeTSelector.size = (byte) tSelector.Length;
+                nativeTSelector.size = (byte)tSelector.Length;
                 nativeTSelector.value = new byte[4];
 
-                for (int i = 0; i < tSelector.Length; i++) 
+                for (int i = 0; i < tSelector.Length; i++)
                     nativeTSelector.value[i] = tSelector[i];
 
-				if (sSelector.Length > 16)
-					throw new ArgumentOutOfRangeException("sSelector", "maximum size (16) exceeded");
+                if (sSelector.Length > 16)
+                    throw new ArgumentOutOfRangeException("sSelector", "maximum size (16) exceeded");
 
-				NativeSSelector nativeSSelector;
-				nativeSSelector.size = (byte) sSelector.Length;
-				nativeSSelector.value = new byte[16];
+                NativeSSelector nativeSSelector;
+                nativeSSelector.size = (byte)sSelector.Length;
+                nativeSSelector.value = new byte[16];
 
-				for (int i = 0; i < sSelector.Length; i++)
-					nativeSSelector.value [i] = sSelector [i];
+                for (int i = 0; i < sSelector.Length; i++)
+                    nativeSSelector.value[i] = sSelector[i];
 
-				IsoConnectionParameters_setLocalAddresses(self, pSelector, nativeSSelector, nativeTSelector);
-			}
+                IsoConnectionParameters_setLocalAddresses(self, pSelector, nativeSSelector, nativeTSelector);
+            }
 
             /// <summary>
             /// Instruct ACSE layer to use password authentication.
@@ -212,19 +213,20 @@ namespace IEC61850
             /// <param name='password'>
             /// Password that will be used to authenticate the client
             /// </param>
-			public void UsePasswordAuthentication (string password)
-			{
-				if (authParameter == IntPtr.Zero) {
-					authParameter = AcseAuthenticationParameter_create ();
-					AcseAuthenticationParameter_setAuthMechanism (authParameter, (int)AcseAuthenticationMechanism.ACSE_AUTH_PASSWORD);
-					AcseAuthenticationParameter_setPassword (authParameter, password);
-					IsoConnectionParameters_setAcseAuthenticationParameter(self, authParameter);
-				}
-				else
-					throw new IedConnectionException("Authentication parameter already set");
-			}
-		}
+			public void UsePasswordAuthentication(string password)
+            {
+                if (authParameter == IntPtr.Zero)
+                {
+                    authParameter = AcseAuthenticationParameter_create();
+                    AcseAuthenticationParameter_setAuthMechanism(authParameter, (int)AcseAuthenticationMechanism.ACSE_AUTH_PASSWORD);
+                    AcseAuthenticationParameter_setPassword(authParameter, password);
+                    IsoConnectionParameters_setAcseAuthenticationParameter(self, authParameter);
+                }
+                else
+                    throw new IedConnectionException("Authentication parameter already set");
+            }
+        }
 
-	}
+    }
 }
 

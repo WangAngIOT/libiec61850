@@ -27,287 +27,293 @@ using IEC61850.Common;
 
 namespace IEC61850
 {
-	namespace GOOSE
-	{
-
-		namespace Subscriber 
-		{
-
-			/// <summary>
-			/// GOOSE listener.
-			/// </summary>
-			public delegate void GooseListener (GooseSubscriber report, object parameter);
-
-			public class GooseReceiver : IDisposable
-			{
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern IntPtr GooseReceiver_create ();
-
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseReceiver_addSubscriber(IntPtr self, IntPtr subscriber);
-
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseReceiver_removeSubscriber(IntPtr self, IntPtr subscriber);
-
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseReceiver_start(IntPtr self);
-
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseReceiver_stop(IntPtr self);
-
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				[return: MarshalAs(UnmanagedType.I1)]
-				private static extern bool GooseReceiver_isRunning (IntPtr self);
-
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseReceiver_destroy(IntPtr self);
-
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseReceiver_setInterfaceId(IntPtr self, string interfaceId);
-
-				private IntPtr self;
-
-				private bool isDisposed = false;
-
-				public GooseReceiver()
-				{
-					self = GooseReceiver_create ();
-				}
-
-				public void SetInterfaceId(string interfaceId)
-				{
-					GooseReceiver_setInterfaceId (self, interfaceId);
-				}
-					
-				public void AddSubscriber(GooseSubscriber subscriber)
-				{
-					GooseReceiver_addSubscriber (self, subscriber.self);
-				}
+    namespace GOOSE
+    {
+
+        namespace Subscriber
+        {
+
+            /// <summary>
+            /// GOOSE listener.
+            /// </summary>
+            public delegate void GooseListener(GooseSubscriber report, object parameter);
+
+            public class GooseReceiver : IDisposable
+            {
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern IntPtr GooseReceiver_create();
+
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseReceiver_addSubscriber(IntPtr self, IntPtr subscriber);
+
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseReceiver_removeSubscriber(IntPtr self, IntPtr subscriber);
+
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseReceiver_start(IntPtr self);
+
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseReceiver_stop(IntPtr self);
+
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                [return: MarshalAs(UnmanagedType.I1)]
+                private static extern bool GooseReceiver_isRunning(IntPtr self);
+
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseReceiver_destroy(IntPtr self);
+
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseReceiver_setInterfaceId(IntPtr self, string interfaceId);
+
+                private IntPtr self;
+
+                private bool isDisposed = false;
+
+                public GooseReceiver()
+                {
+                    self = GooseReceiver_create();
+                }
 
-				public void RemoveSubscriber(GooseSubscriber subscriber)
-				{
-					GooseReceiver_removeSubscriber (self, subscriber.self);
-				}
+                public void SetInterfaceId(string interfaceId)
+                {
+                    GooseReceiver_setInterfaceId(self, interfaceId);
+                }
 
-				public void Start()
-				{
-					GooseReceiver_start (self);
-				}
+                public void AddSubscriber(GooseSubscriber subscriber)
+                {
+                    GooseReceiver_addSubscriber(self, subscriber.self);
+                }
 
-				public void Stop()
-				{
-					GooseReceiver_stop (self);
-				}
+                public void RemoveSubscriber(GooseSubscriber subscriber)
+                {
+                    GooseReceiver_removeSubscriber(self, subscriber.self);
+                }
 
-				public bool IsRunning()
-				{
-					return GooseReceiver_isRunning (self);
-				}
+                public void Start()
+                {
+                    GooseReceiver_start(self);
+                }
 
-				public void Dispose()
-				{
-					if (isDisposed == false) {
-						isDisposed = true;
-						GooseReceiver_destroy (self);
-						self = IntPtr.Zero;
-					}
-				}
-
-				~GooseReceiver()
-				{
-					Dispose ();
-				}
-			}
+                public void Stop()
+                {
+                    GooseReceiver_stop(self);
+                }
 
+                public bool IsRunning()
+                {
+                    return GooseReceiver_isRunning(self);
+                }
 
-			/// <summary>
-			/// Representing a GOOSE subscriber
-			/// </summary>
-			/// <description>
-			/// NOTE: After SetListener is called, do not call any function outside of
-			/// the callback handler!
-			/// </description>
-			public class GooseSubscriber : IDisposable
-			{
+                public void Dispose()
+                {
+                    if (isDisposed == false)
+                    {
+                        isDisposed = true;
+                        GooseReceiver_destroy(self);
+                        self = IntPtr.Zero;
+                    }
+                }
 
-				[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-				private delegate void InternalGooseListener (IntPtr subscriber, IntPtr parameter);
+                ~GooseReceiver()
+                {
+                    Dispose();
+                }
+            }
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern IntPtr GooseSubscriber_create (string goCbRef, IntPtr dataSetValue);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseSubscriber_setAppId(IntPtr self, UInt16 appId);
+            /// <summary>
+            /// Representing a GOOSE subscriber
+            /// </summary>
+            /// <description>
+            /// NOTE: After SetListener is called, do not call any function outside of
+            /// the callback handler!
+            /// </description>
+            public class GooseSubscriber : IDisposable
+            {
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				[return: MarshalAs(UnmanagedType.I1)]
-				private static extern bool GooseSubscriber_isValid (IntPtr self);
+                [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+                private delegate void InternalGooseListener(IntPtr subscriber, IntPtr parameter);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern UInt32 GooseSubscriber_getStNum (IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern IntPtr GooseSubscriber_create(string goCbRef, IntPtr dataSetValue);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern UInt32 GooseSubscriber_getSqNum (IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseSubscriber_setAppId(IntPtr self, UInt16 appId);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				[return: MarshalAs(UnmanagedType.I1)]
-				private static extern bool GooseSubscriber_isTest (IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                [return: MarshalAs(UnmanagedType.I1)]
+                private static extern bool GooseSubscriber_isValid(IntPtr self);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern UInt32 GooseSubscriber_getConfRev (IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern UInt32 GooseSubscriber_getStNum(IntPtr self);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				[return: MarshalAs(UnmanagedType.I1)]
-				private static extern bool GooseSubscriber_needsCommission (IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern UInt32 GooseSubscriber_getSqNum(IntPtr self);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern UInt32 GooseSubscriber_getTimeAllowedToLive (IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                [return: MarshalAs(UnmanagedType.I1)]
+                private static extern bool GooseSubscriber_isTest(IntPtr self);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern UInt64 GooseSubscriber_getTimestamp (IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern UInt32 GooseSubscriber_getConfRev(IntPtr self);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern IntPtr GooseSubscriber_getDataSetValues(IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                [return: MarshalAs(UnmanagedType.I1)]
+                private static extern bool GooseSubscriber_needsCommission(IntPtr self);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseSubscriber_destroy(IntPtr self);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern UInt32 GooseSubscriber_getTimeAllowedToLive(IntPtr self);
 
-				[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-				private static extern void GooseSubscriber_setListener (IntPtr self, InternalGooseListener listener, IntPtr parameter);
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern UInt64 GooseSubscriber_getTimestamp(IntPtr self);
 
-				internal IntPtr self;
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern IntPtr GooseSubscriber_getDataSetValues(IntPtr self);
 
-				private bool isDisposed = false;
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseSubscriber_destroy(IntPtr self);
 
-				private GooseListener listener = null;
-				private object listenerParameter = null;
-
-				private event InternalGooseListener internalListener = null;
+                [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+                private static extern void GooseSubscriber_setListener(IntPtr self, InternalGooseListener listener, IntPtr parameter);
 
-				private void internalGooseListener (IntPtr subscriber, IntPtr parameter)
-				{
-					try {
+                internal IntPtr self;
 
-						if (listener != null) {
-							listener(this, listenerParameter);
-						}
-
-					} catch (Exception e) 
-					{
-						// older versions of mono 2.10 (for linux?) cause this exception
-						Console.WriteLine(e.Message);
-					}
-				}
-
-				public GooseSubscriber(string goCbRef)
-				{
-					self = GooseSubscriber_create (goCbRef, IntPtr.Zero);
-				}
-
-				public void SetAppId(UInt16 appId)
-				{
-					GooseSubscriber_setAppId (self, appId);
-				}
-
-				public bool IsValid ()
-				{
-					return GooseSubscriber_isValid (self);
-				}
-
-
-				public void SetListener(GooseListener listener, object parameter)
-				{
-					this.listener = listener;
-					this.listenerParameter = parameter;
-
-					if (internalListener == null) {
-						internalListener = new InternalGooseListener (internalGooseListener);
-
-						GooseSubscriber_setListener (self, internalListener, IntPtr.Zero);
-					}
-				}
-
-				public UInt32 GetStNum()
-				{
-					return GooseSubscriber_getStNum (self);
-				}
-
-				public UInt32 GetSqNum()
-				{
-					return GooseSubscriber_getSqNum (self);
-				}
-
-				public bool IsTest()
-				{
-					return GooseSubscriber_isTest (self);
-				}
-
-				public UInt32 GetConfRev()
-				{
-					return GooseSubscriber_getConfRev (self);
-				}
-
-				public bool NeedsCommission()
-				{
-					return GooseSubscriber_needsCommission (self);
-				}
-
-				public UInt32 GetTimeAllowedToLive()
-				{
-					return GooseSubscriber_getTimeAllowedToLive (self);
-				}
-
-				public UInt64 GetTimestamp ()
-				{
-					return GooseSubscriber_getTimestamp (self);
-				}
-					
-				public DateTimeOffset GetTimestampsDateTimeOffset ()
-				{
-					UInt64 entryTime = GetTimestamp ();
-
-					DateTimeOffset retVal = new DateTimeOffset (1970, 1, 1, 0, 0, 0, TimeSpan.Zero);
-
-					return retVal.AddMilliseconds (entryTime);
-				}
-
-				/// <summary>
-				/// Get the values of the GOOSE data set from the last received GOOSE message
-				/// </summary>
-				/// <remarks>
-				/// The MmsValue instance is only valid in the context of the GooseLister callback.
-				/// Do not store for outside use!
-				/// </remarks>
-				/// <returns>The data set values.</returns>
-				public MmsValue GetDataSetValues()
-				{
-					IntPtr mmsValueRef = GooseSubscriber_getDataSetValues (self);
-
-					return (new MmsValue (mmsValueRef));
-				}
-
-				/// <summary>
-				/// Releases all resource used by the <see cref="IEC61850.GOOSE.Subscriber.GooseSubscriber"/> object.
-				/// </summary>
-				/// <remarks>>
-				/// This function has only to be called when the <see cref="IEC61850.GOOSE.Subscriber.GooseSubscriber"/>
-				/// has not been added to the GooseReceiver or has been removed from the GooseReceiver.
-				/// When the GooseReceiver holds a reference it will take care for releasing the resources.
-				/// In this case Dispose MUST not be called! Otherwise the natice resources will be
-				/// released twice.
-				/// </remarks>
-				public void Dispose()
-				{
-					if (isDisposed == false) {
-						isDisposed = true;
-						GooseSubscriber_destroy (self);
-						self = IntPtr.Zero;
-					}
-				}
-
-			}
-
-		}
-			
-	}
+                private bool isDisposed = false;
+
+                private GooseListener listener = null;
+                private object listenerParameter = null;
+
+                private event InternalGooseListener internalListener = null;
+
+                private void internalGooseListener(IntPtr subscriber, IntPtr parameter)
+                {
+                    try
+                    {
+
+                        if (listener != null)
+                        {
+                            listener(this, listenerParameter);
+                        }
+
+                    }
+                    catch (Exception e)
+                    {
+                        // older versions of mono 2.10 (for linux?) cause this exception
+                        Console.WriteLine(e.Message);
+                    }
+                }
+
+                public GooseSubscriber(string goCbRef)
+                {
+                    self = GooseSubscriber_create(goCbRef, IntPtr.Zero);
+                }
+
+                public void SetAppId(UInt16 appId)
+                {
+                    GooseSubscriber_setAppId(self, appId);
+                }
+
+                public bool IsValid()
+                {
+                    return GooseSubscriber_isValid(self);
+                }
+
+
+                public void SetListener(GooseListener listener, object parameter)
+                {
+                    this.listener = listener;
+                    this.listenerParameter = parameter;
+
+                    if (internalListener == null)
+                    {
+                        internalListener = new InternalGooseListener(internalGooseListener);
+
+                        GooseSubscriber_setListener(self, internalListener, IntPtr.Zero);
+                    }
+                }
+
+                public UInt32 GetStNum()
+                {
+                    return GooseSubscriber_getStNum(self);
+                }
+
+                public UInt32 GetSqNum()
+                {
+                    return GooseSubscriber_getSqNum(self);
+                }
+
+                public bool IsTest()
+                {
+                    return GooseSubscriber_isTest(self);
+                }
+
+                public UInt32 GetConfRev()
+                {
+                    return GooseSubscriber_getConfRev(self);
+                }
+
+                public bool NeedsCommission()
+                {
+                    return GooseSubscriber_needsCommission(self);
+                }
+
+                public UInt32 GetTimeAllowedToLive()
+                {
+                    return GooseSubscriber_getTimeAllowedToLive(self);
+                }
+
+                public UInt64 GetTimestamp()
+                {
+                    return GooseSubscriber_getTimestamp(self);
+                }
+
+                public DateTimeOffset GetTimestampsDateTimeOffset()
+                {
+                    UInt64 entryTime = GetTimestamp();
+
+                    DateTimeOffset retVal = new DateTimeOffset(1970, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+                    return retVal.AddMilliseconds(entryTime);
+                }
+
+                /// <summary>
+                /// Get the values of the GOOSE data set from the last received GOOSE message
+                /// </summary>
+                /// <remarks>
+                /// The MmsValue instance is only valid in the context of the GooseLister callback.
+                /// Do not store for outside use!
+                /// </remarks>
+                /// <returns>The data set values.</returns>
+                public MmsValue GetDataSetValues()
+                {
+                    IntPtr mmsValueRef = GooseSubscriber_getDataSetValues(self);
+
+                    return (new MmsValue(mmsValueRef));
+                }
+
+                /// <summary>
+                /// Releases all resource used by the <see cref="IEC61850.GOOSE.Subscriber.GooseSubscriber"/> object.
+                /// </summary>
+                /// <remarks>>
+                /// This function has only to be called when the <see cref="IEC61850.GOOSE.Subscriber.GooseSubscriber"/>
+                /// has not been added to the GooseReceiver or has been removed from the GooseReceiver.
+                /// When the GooseReceiver holds a reference it will take care for releasing the resources.
+                /// In this case Dispose MUST not be called! Otherwise the natice resources will be
+                /// released twice.
+                /// </remarks>
+                public void Dispose()
+                {
+                    if (isDisposed == false)
+                    {
+                        isDisposed = true;
+                        GooseSubscriber_destroy(self);
+                        self = IntPtr.Zero;
+                    }
+                }
+
+            }
+
+        }
+
+    }
 }

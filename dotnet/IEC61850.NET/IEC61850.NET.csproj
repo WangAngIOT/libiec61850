@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>netstandard2.0;net20;net35;net40;net45;net46;net461;net462;net47;;net471;net472</TargetFrameworks>
+    <RootNamespace>IEC61850.NET</RootNamespace>
+    <AssemblyName>IEC61850.NET</AssemblyName>
+    <AssemblyVersion>1.3.3.0</AssemblyVersion>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <DebugSymbols>false</DebugSymbols>
+    <Version>1.3.3</Version>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <Compile Include="..\IEC61850forCSharp\Control.cs" />
+    <Compile Include="..\IEC61850forCSharp\DataSet.cs" />
+    <Compile Include="..\IEC61850forCSharp\GooseControlBlock.cs" />
+    <Compile Include="..\IEC61850forCSharp\GooseSubscriber.cs" />
+    <Compile Include="..\IEC61850forCSharp\IEC61850ClientAPI.cs" />
+    <Compile Include="..\IEC61850forCSharp\IEC61850CommonAPI.cs" />
+    <Compile Include="..\IEC61850forCSharp\IEC61850ServerAPI.cs" />
+    <Compile Include="..\IEC61850forCSharp\IedServerConfig.cs" />
+    <Compile Include="..\IEC61850forCSharp\IsoConnectionParameters.cs" />
+    <Compile Include="..\IEC61850forCSharp\MmsValue.cs" />
+    <Compile Include="..\IEC61850forCSharp\MmsVariableSpecification.cs" />
+    <Compile Include="..\IEC61850forCSharp\ReportControlBlock.cs" />
+    <Compile Include="..\IEC61850forCSharp\Reporting.cs" />
+    <Compile Include="..\IEC61850forCSharp\SampledValuesControlBlock.cs" />
+    <Compile Include="..\IEC61850forCSharp\SampledValuesSubscriber.cs" />
+    <Compile Include="..\IEC61850forCSharp\TLS.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--None Include="nuget\build\IEC61850.NET.targets" PackagePath="build\IEC61850.NET.targets" Pack="true" /-->
+    <None Include="nuget\runtimes\win-x86\native\IEC61850.dll" Link="nuget\runtimes\win-x86\native\IEC61850.dll" PackagePath="runtimes\win-x86\native\IEC61850.dll" Pack="true" />
+    <None Include="nuget\runtimes\win-x64\native\IEC61850.dll" Link="nuget\runtimes\win-x64\native\IEC61850.dll" PackagePath="runtimes\win-x64\native\IEC61850.dll" Pack="true" />
+    <!-- 
+    <None Include="nuget\runtimes\linux-x86\native\IEC61850.so" Link="nuget\runtimes\linux-x86\native\IEC61850.so" PackagePath="runtimes\linux-x86\native\IEC61850.so" Pack="true" />
+    <None Include="nuget\runtimes\linux-x64\native\IEC61850.so" Link="nuget\runtimes\linux-x64\native\IEC61850.so" PackagePath="runtimes\linux-x64\native\IEC61850.so" Pack="true" />
+    <None Include="nuget\runtimes\linux-arm\native\IEC61850.so" Link="nuget\runtimes\linux-arm\native\IEC61850.so" PackagePath="runtimes\linux-arm\native\IEC61850.so" Pack="true" />
+    -->
+  </ItemGroup>
+  
+</Project>
