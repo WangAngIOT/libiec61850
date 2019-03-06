@@ -2,11 +2,12 @@
 
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net20;net35;net40;net45;net46;net461;net462;net47;;net471;net472</TargetFrameworks>
-    <RootNamespace>IEC61850.NET</RootNamespace>
     <AssemblyName>IEC61850.NET</AssemblyName>
     <AssemblyVersion>1.3.3.0</AssemblyVersion>
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <RootNamespace>IEC61850.NET</RootNamespace>
     <DebugSymbols>false</DebugSymbols>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Description>IEC61850.NET</Description>
     <Version>1.3.3</Version>
   </PropertyGroup>
   
