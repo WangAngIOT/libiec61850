@@ -1513,7 +1513,7 @@ updateOwner(ReportControl* rc, MmsServerConnection connection)
 
                 if (strchr(clientAddressString, '.') != NULL) {
                     if (DEBUG_IED_SERVER)
-                        printf("IED_SERVER: reporting.c:   client address is IPv4 address\n");
+                        printf("IED_SERVER: reporting.c: client address is IPv4 address\n");
 
                     uint8_t ipV4Addr[4];
 
@@ -1527,8 +1527,21 @@ updateOwner(ReportControl* rc, MmsServerConnection connection)
                 }
                 else {
                     uint8_t ipV6Addr[16];
-                    MmsValue_setOctetString(owner, ipV6Addr, 0);
-                    if (DEBUG_IED_SERVER) printf("IED_SERVER: reporting.c:   client address is IPv6 address or unknown\n");
+
+                    bool valid = StringUtils_convertIPv6AdddressStringToByteArray(clientAddressString, ipV6Addr);
+
+                    if (valid) {
+                        if (DEBUG_IED_SERVER)
+                            printf("IED_SERVER: reporting.c: client address is IPv6 address\n");
+
+                        MmsValue_setOctetString(owner, ipV6Addr, 16);
+                    }
+                    else {
+                        if (DEBUG_IED_SERVER)
+                            printf("IED_SERVER: reporting.c: not a valid IPv6 address\n");
+
+                        MmsValue_setOctetString(owner, ipV6Addr, 0);
+                    }
                 }
             }
             else {
@@ -1603,11 +1616,13 @@ checkReservationTimeout(ReportControl* rc)
 
 #if (CONFIG_IEC61850_BRCB_WITH_RESVTMS == 1)
                 MmsValue* resvTmsVal = ReportControl_getRCBValue(rc, "ResvTms");
-                MmsValue_setInt16(resvTmsVal, rc->resvTms);
+                if (resvTmsVal)
+                    MmsValue_setInt16(resvTmsVal, rc->resvTms);
 #endif
 
                 rc->reservationTimeout = 0;
                 updateOwner(rc, NULL);
+                rc->reserved = false;
             }
         }
     }
@@ -1629,17 +1644,23 @@ isIpAddressMatchingWithOwner(ReportControl* rc, const char* ipAddress)
 
     if (owner != NULL) {
 
-        uint8_t ipV4Addr[4];
-
         if (strchr(ipAddress, '.') != NULL) {
+            uint8_t ipV4Addr[4];
+
             if (convertIPv4AddressStringToByteArray(ipAddress, ipV4Addr)) {
                 if (memcmp(ipV4Addr, MmsValue_getOctetStringBuffer(owner), 4) == 0)
                     return true;
             }
         }
         else {
-            /* TODO add support to compare IPv6 addresses */
-            return true;
+            uint8_t ipV6Addr[16];
+
+            if (StringUtils_convertIPv6AdddressStringToByteArray(ipAddress, ipV6Addr)) {
+                if (memcmp(ipV6Addr, MmsValue_getOctetStringBuffer(owner), 16) == 0)
+                    return true;
+            }
+            else
+                return false;
         }
     }
 
@@ -1654,7 +1675,8 @@ reserveRcb(ReportControl* rc,  MmsServerConnection connection)
 
 #if (CONFIG_IEC61850_BRCB_WITH_RESVTMS == 1)
     MmsValue* resvTmsVal = ReportControl_getRCBValue(rc, "ResvTms");
-    MmsValue_setInt16(resvTmsVal, rc->resvTms);
+    if (resvTmsVal)
+        MmsValue_setInt16(resvTmsVal, rc->resvTms);
 #endif
 
     rc->reservationTimeout = Hal_getTimeInMs() + (RESV_TMS_IMPLICIT_VALUE * 1000);
@@ -2021,8 +2043,9 @@ Reporting_RCBWriteAccessHandler(MmsMapping* self, ReportControl* rc, char* eleme
         }
 
     }
-    else
+    else {
         retVal = DATA_ACCESS_ERROR_TEMPORARILY_UNAVAILABLE;
+    }
 
 exit_function:
 
@@ -2059,6 +2082,7 @@ Reporting_deactivateReportsForConnection(MmsMapping* self, MmsServerConnection c
             rc->reserved = false;
 
             if (rc->buffered == false) {
+
                 MmsValue* resv = ReportControl_getRCBValue(rc, "Resv");
                 MmsValue_setBoolean(resv, false);
 
