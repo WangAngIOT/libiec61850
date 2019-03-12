@@ -40,7 +40,7 @@ StringUtils_copySubString(char* startPos, char* endPos)
 char*
 StringUtils_copyString(const char* string)
 {
-	int newStringLength = strlen(string) + 1;
+    int newStringLength = strlen(string) + 1;
 
 	char* newString = (char*) GLOBAL_MALLOC(newStringLength);
 

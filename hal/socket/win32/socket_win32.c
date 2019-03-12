@@ -135,7 +135,6 @@ Socket_activateTcpKeepAlive(Socket self, int idleTime, int interval, int count)
      }
 }
 
-
 static void
 setSocketNonBlocking(Socket self)
 {
@@ -151,6 +150,18 @@ setSocketNonBlocking(Socket self)
 
     setsockopt(self->fd, IPPROTO_TCP, TCP_NODELAY, (const char*)&tcpNoDelay, sizeof(int));
 }
+
+void
+setSocketSoLinger(SOCKET socket)
+{
+    if (socket == NULL)
+        return;
+    struct linger so_linger;
+    so_linger.l_onoff = 1;
+    so_linger.l_linger = 0;
+    setsockopt(socket, SOL_SOCKET, SO_LINGER, (const char *)&so_linger, sizeof(so_linger));
+}
+
 
 static bool
 prepareServerAddress(const char* address, int port, struct sockaddr_in* sockaddr)
@@ -233,8 +244,10 @@ TcpServerSocket_create(const char* address, int port)
 		return NULL;
 	}
 
-	int optionReuseAddr = 1;
-	setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&optionReuseAddr, sizeof(int));
+    int optionReuseAddr = 1;
+    setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, (const char *)&optionReuseAddr, sizeof(int));
+
+    setSocketSoLinger(listen_socket);
 
 	ec = bind(listen_socket, (struct sockaddr*)&server_addr, sizeof(server_addr));
 
@@ -279,6 +292,8 @@ ServerSocket_accept(ServerSocket self)
 		conSocket = (Socket) GLOBAL_CALLOC(1, sizeof(struct sSocket));
 		conSocket->fd = fd;
 
+        setSocketSoLinger(conSocket->fd);
+
 		socketCount++;
 
 	    setSocketNonBlocking(conSocket);
@@ -296,7 +311,8 @@ ServerSocket_setBacklog(ServerSocket self, int backlog)
 void
 ServerSocket_destroy(ServerSocket self)
 {
-	closesocket(self->fd);
+    setSocketSoLinger(self->fd);
+    closesocket(self->fd);
 	socketCount--;
 	wsaShutdown();
 	GLOBAL_FREEMEM(self);
@@ -486,6 +502,7 @@ void
 Socket_destroy(Socket self)
 {
 	if (self->fd != INVALID_SOCKET) {
+        setSocketSoLinger(self->fd);
 		closesocket(self->fd);
 	}
 
