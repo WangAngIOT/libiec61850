@@ -701,6 +701,8 @@ namespace IEC61850
             private InternalControlPerformCheckHandler internalControlPerformCheckHandlerRef = null;
             private InternalControlWaitForExecutionHandler internalControlWaitForExecutionHandlerRef = null;
 
+            private InternalWriteAccessHandler internalWriteAccessHandlerRef = null;
+
             private class ControlHandlerInfo
             {
                 public DataObject controlObject = null;
@@ -992,8 +994,9 @@ namespace IEC61850
             {
                 writeAccessHandlers.Add(dataAttr.self, new WriteAccessHandlerInfo(handler, parameter, dataAttr));
                 //writeAccessHandlers.Item [dataAttr.self] = handler;
-
-                IedServer_handleWriteAccess(self, dataAttr.self, writeAccessHandler, IntPtr.Zero);
+                if (internalWriteAccessHandlerRef == null)
+                    internalWriteAccessHandlerRef = new InternalWriteAccessHandler(writeAccessHandler);
+                IedServer_handleWriteAccess(self, dataAttr.self, internalWriteAccessHandlerRef, IntPtr.Zero);
             }
 
             public void SetWriteAccessPolicy(FunctionalConstraint fc, AccessPolicy policy)
