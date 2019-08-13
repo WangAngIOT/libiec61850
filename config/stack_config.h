@@ -37,7 +37,7 @@
  * 0 ==> server runs in multi-threaded mode (one thread for each connection and
  * one server background thread )
  */
-#define CONFIG_MMS_SINGLE_THREADED 0
+#define CONFIG_MMS_SINGLE_THREADED 1
 
 #if (WITH_MBEDTLS == 1)
 #define CONFIG_MMS_SUPPORT_TLS 1
@@ -51,7 +51,7 @@
 #define CONFIG_MMS_THREADLESS_STACK 0
 
 /* number of concurrent MMS client connections the server accepts, -1 for no limit */
-#define CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS 100
+#define CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS 60
 
 /* activate TCP keep alive mechanism. 1 -> activate */
 #define CONFIG_ACTIVATE_TCP_KEEPALIVE 1
