@@ -51,12 +51,6 @@
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <ItemGroup>
-    <ProjectReference Include="..\IEC61850forCSharp\IEC61850.NET.csproj">
-      <Project>{C35D624E-5506-4560-8074-1728F1FA1A4D}</Project>
-      <Name>IEC61850.NET</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
     <BootstrapperPackage Include=".NETFramework,Version=v4.0">
       <Visible>False</Visible>
       <ProductName>Microsoft .NET Framework 4 %28x86 and x64%29</ProductName>

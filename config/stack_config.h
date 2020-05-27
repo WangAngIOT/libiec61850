@@ -51,13 +51,13 @@
 #define CONFIG_MMS_THREADLESS_STACK 0
 
 /* number of concurrent MMS client connections the server accepts, -1 for no limit */
-#define CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS 100
+#define CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS -1
 
 /* activate TCP keep alive mechanism. 1 -> activate */
 #define CONFIG_ACTIVATE_TCP_KEEPALIVE 1
 
 /* time (in s) between last message and first keepalive message */
-#define CONFIG_TCP_KEEPALIVE_IDLE 5
+#define CONFIG_TCP_KEEPALIVE_IDLE 20
 
 /* time between subsequent keepalive messages if no ack received */
 #define CONFIG_TCP_KEEPALIVE_INTERVAL 2

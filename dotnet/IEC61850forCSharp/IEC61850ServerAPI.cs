@@ -347,6 +347,10 @@ namespace IEC61850
 			public const int CDC_OPTION_DESC_UNICODE = (1 << 3);
 			public const int CDC_OPTION_AC_DLNDA = (1 << 4);
 			public const int CDC_OPTION_AC_DLN = (1 << 5);
+			public const int CDC_OPTION_UNIT = (1 << 6);
+
+			public const int CDC_OPTION_MIN = (1 << 14);
+			public const int CDC_OPTION_MAX = (1 << 15);
 
 			// options that are only valid for DPL CDC
 			public const int CDC_OPTION_DPL_HWREV = (1 << 17);
@@ -700,6 +704,32 @@ namespace IEC61850
 				else
 					return null;
 			}
+
+			public static DataObject Create_CDC_SPG_SG(ModelNode parent, string name, uint options)
+			{
+				DataObject newSPG = new DataObject(name, parent);
+				new DataAttribute("setVal", newSPG, DataAttributeType.BOOLEAN, FunctionalConstraint.SG, TriggerOptions.DATA_CHANGED, 0, 0);
+				new DataAttribute("setVal", newSPG, DataAttributeType.BOOLEAN, FunctionalConstraint.SE, TriggerOptions.DATA_CHANGED, 0, 0);
+				new DataAttribute("d", newSPG, DataAttributeType.VISIBLE_STRING_255, FunctionalConstraint.DC, 0, 0, 0);
+				new DataAttribute("dU", newSPG, DataAttributeType.UNICODE_STRING_255, FunctionalConstraint.DC, 0, 0, 0);
+				new DataAttribute("dataNs", newSPG, DataAttributeType.VISIBLE_STRING_255, FunctionalConstraint.EX, 0, 0, 0);
+				return newSPG;
+			}
+
+			public static DataObject Create_CDC_ING_SG(ModelNode parent, string name, uint options)
+			{
+				DataObject newING = new DataObject(name, parent);
+				new DataAttribute("setVal", newING, DataAttributeType.INT32, FunctionalConstraint.SG, TriggerOptions.DATA_CHANGED, 0, 0);
+				new DataAttribute("setVal", newING, DataAttributeType.INT32, FunctionalConstraint.SE, TriggerOptions.DATA_CHANGED, 0, 0);
+				new DataAttribute("minVal", newING, DataAttributeType.INT32, FunctionalConstraint.CF, TriggerOptions.DATA_CHANGED, 0, 0);
+				new DataAttribute("maxVal", newING, DataAttributeType.INT32, FunctionalConstraint.CF, TriggerOptions.DATA_CHANGED, 0, 0);
+				new DataAttribute("stepSize", newING, DataAttributeType.INT32U, FunctionalConstraint.CF, TriggerOptions.DATA_CHANGED, 0, 0);
+				new DataAttribute("d", newING, DataAttributeType.VISIBLE_STRING_255, FunctionalConstraint.DC, 0, 0, 0);
+				new DataAttribute("dU", newING, DataAttributeType.UNICODE_STRING_255, FunctionalConstraint.DC, 0, 0, 0);
+				new DataAttribute("dataNs", newING, DataAttributeType.VISIBLE_STRING_255, FunctionalConstraint.EX, 0, 0, 0);
+				return newING;
+			}
+
 		}
 
 		public class DataObject : ModelNode
@@ -830,6 +860,25 @@ namespace IEC61850
 			{
 				self = ReportControlBlock_create(name, parent.self, rptId, isBuffered, dataSetName, confRev, trgOps, options, bufTm, intgPd);
 			}
+		}
+
+		public class SettingGroupControlBlock
+		{
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr SettingGroupControlBlock_create(IntPtr parent, uint actSG, uint numOfSGs);
+
+			public IntPtr self = IntPtr.Zero;
+
+			public SettingGroupControlBlock(LogicalNode parent, uint actSG, uint numOfSGs)
+			{
+				self = SettingGroupControlBlock_create(parent.self, actSG, numOfSGs);
+			}
+
+			public SettingGroupControlBlock(IntPtr self)
+			{
+				this.self = self;
+			}
+
 		}
 
 		public class ClientConnection 
@@ -1065,6 +1114,87 @@ namespace IEC61850
 
 		public delegate CheckHandlerResult CheckHandler (ControlAction action, object parameter, MmsValue ctlVal, bool test, bool interlockCheck);
 
+		public enum MmsError
+		{
+			/* generic error codes */
+			MMS_ERROR_NONE = 0,
+			MMS_ERROR_CONNECTION_REJECTED = 1,
+			MMS_ERROR_CONNECTION_LOST = 2,
+			MMS_ERROR_SERVICE_TIMEOUT = 3,
+			MMS_ERROR_PARSING_RESPONSE = 4,
+			MMS_ERROR_HARDWARE_FAULT = 5,
+			MMS_ERROR_CONCLUDE_REJECTED = 6,
+			MMS_ERROR_INVALID_ARGUMENTS = 7,
+			MMS_ERROR_OUTSTANDING_CALL_LIMIT = 8,
+
+			MMS_ERROR_OTHER = 9,
+
+			/* confirmed error PDU codes */
+			MMS_ERROR_VMDSTATE_OTHER = 10,
+
+			MMS_ERROR_APPLICATION_REFERENCE_OTHER = 20,
+
+			MMS_ERROR_DEFINITION_OTHER = 30,
+			MMS_ERROR_DEFINITION_INVALID_ADDRESS = 31,
+			MMS_ERROR_DEFINITION_TYPE_UNSUPPORTED = 32,
+			MMS_ERROR_DEFINITION_TYPE_INCONSISTENT = 33,
+			MMS_ERROR_DEFINITION_OBJECT_UNDEFINED = 34,
+			MMS_ERROR_DEFINITION_OBJECT_EXISTS = 35,
+			MMS_ERROR_DEFINITION_OBJECT_ATTRIBUTE_INCONSISTENT = 36,
+
+			MMS_ERROR_RESOURCE_OTHER = 40,
+			MMS_ERROR_RESOURCE_CAPABILITY_UNAVAILABLE = 41,
+
+			MMS_ERROR_SERVICE_OTHER = 50,
+			MMS_ERROR_SERVICE_OBJECT_CONSTRAINT_CONFLICT = 55,
+
+			MMS_ERROR_SERVICE_PREEMPT_OTHER = 60,
+
+			MMS_ERROR_TIME_RESOLUTION_OTHER = 70,
+
+			MMS_ERROR_ACCESS_OTHER = 80,
+			MMS_ERROR_ACCESS_OBJECT_NON_EXISTENT = 81,
+			MMS_ERROR_ACCESS_OBJECT_ACCESS_UNSUPPORTED = 82,
+			MMS_ERROR_ACCESS_OBJECT_ACCESS_DENIED = 83,
+			MMS_ERROR_ACCESS_OBJECT_INVALIDATED = 84,
+			MMS_ERROR_ACCESS_OBJECT_VALUE_INVALID = 85, /* for DataAccessError 11 */
+			MMS_ERROR_ACCESS_TEMPORARILY_UNAVAILABLE = 86, /* for DataAccessError 2 */
+
+			MMS_ERROR_FILE_OTHER = 90,
+			MMS_ERROR_FILE_FILENAME_AMBIGUOUS = 91,
+			MMS_ERROR_FILE_FILE_BUSY = 92,
+			MMS_ERROR_FILE_FILENAME_SYNTAX_ERROR = 93,
+			MMS_ERROR_FILE_CONTENT_TYPE_INVALID = 94,
+			MMS_ERROR_FILE_POSITION_INVALID = 95,
+			MMS_ERROR_FILE_FILE_ACCESS_DENIED = 96,
+			MMS_ERROR_FILE_FILE_NON_EXISTENT = 97,
+			MMS_ERROR_FILE_DUPLICATE_FILENAME = 98,
+			MMS_ERROR_FILE_INSUFFICIENT_SPACE_IN_FILESTORE = 99,
+
+			/* reject codes */
+			MMS_ERROR_REJECT_OTHER = 100,
+			MMS_ERROR_REJECT_UNKNOWN_PDU_TYPE = 101,
+			MMS_ERROR_REJECT_INVALID_PDU = 102,
+			MMS_ERROR_REJECT_UNRECOGNIZED_SERVICE = 103,
+			MMS_ERROR_REJECT_UNRECOGNIZED_MODIFIER = 104,
+			MMS_ERROR_REJECT_REQUEST_INVALID_ARGUMENT = 105
+		}
+
+		public enum MmsFileServiceType
+		{
+			MMS_FILE_ACCESS_TYPE_READ_DIRECTORY,
+			MMS_FILE_ACCESS_TYPE_OPEN,
+			MMS_FILE_ACCESS_TYPE_OBTAIN,
+			MMS_FILE_ACCESS_TYPE_DELETE,
+			MMS_FILE_ACCESS_TYPE_RENAME
+		}
+
+		public delegate MmsError FileAccessHandler(object parameter, ClientConnection clientConnection, MmsFileServiceType service, string localFilename, string otherFilename);
+
+		public delegate bool ActiveSettingGroupChangedHandler(object parameter, SettingGroupControlBlock sgcb, uint newActSg, ClientConnection clientConnection);
+		public delegate bool EditSettingGroupChangedHandler(object parameter, SettingGroupControlBlock sgcb, uint newEditSg, ClientConnection clientConnection);
+		public delegate void EditSettingGroupConfirmationHandler(object parameter, SettingGroupControlBlock sgcb, uint editSg);
+
 		/// <summary>
 		/// This class acts as the entry point for the IEC 61850 client API. It represents a single
 		/// (MMS) connection to a server.
@@ -1132,6 +1262,15 @@ namespace IEC61850
             [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr IedServer_getAttributeValue(IntPtr self, IntPtr dataAttribute);
 
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr IedServer_getMmsServer(IntPtr self);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr MmsServer_setFilestoreBasepath(IntPtr selfMmsServer, string basepath);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr MmsServerConnection_getFilesystemBasepath(IntPtr selfMmsServer);
+
 			[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 			private delegate int InternalControlPerformCheckHandler (IntPtr action, IntPtr parameter, IntPtr ctlVal, [MarshalAs(UnmanagedType.I1)] bool test, [MarshalAs(UnmanagedType.I1)] bool interlockCheck);
 
@@ -1160,6 +1299,155 @@ namespace IEC61850
 			static extern void IedServer_handleWriteAccess(IntPtr self, IntPtr dataAttribute,
 				InternalWriteAccessHandler handler, IntPtr parameter);
 
+
+            #region 定值组相关回调处理
+
+
+            #region 激活定值组
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            private delegate int InternalActiveSettingGroupChangedHandler(IntPtr parameter, IntPtr sgcb, uint newActSg, IntPtr connection);
+
+			[DllImport("iec61850.dll", CallingConvention = CallingConvention.Winapi)]
+			static extern void IedServer_setActiveSettingGroupChangedHandler(IntPtr self, IntPtr sgcb, InternalActiveSettingGroupChangedHandler handler, IntPtr parameter);
+
+			private InternalActiveSettingGroupChangedHandler internalActiveSettingGroupChangedHandlerRef = null;
+
+			private ActiveSettingGroupChangedHandler activeSettingGroupChangedHandler = null;
+			private object activeSettingGroupChangedHandlerParameter = null;
+
+			int internalActiveSettingGroupChangedHandler(IntPtr parameter, IntPtr sgcb, uint newActSg, IntPtr connection)
+			{
+				ClientConnection con = null;
+
+				clientConnections.TryGetValue(connection, out con);
+
+				var result = activeSettingGroupChangedHandler(activeSettingGroupChangedHandlerParameter, new SettingGroupControlBlock(sgcb), newActSg, con);
+
+				return result ? 1 : 0;
+			}
+
+			public void SetActiveSettingGroupChangedHandler(SettingGroupControlBlock sgcb, ActiveSettingGroupChangedHandler handler, object parameter)
+			{
+				activeSettingGroupChangedHandler = handler;
+				activeSettingGroupChangedHandlerParameter = parameter;
+
+				if (internalActiveSettingGroupChangedHandlerRef == null)
+					internalActiveSettingGroupChangedHandlerRef = new InternalActiveSettingGroupChangedHandler(internalActiveSettingGroupChangedHandler);
+
+				IedServer_setActiveSettingGroupChangedHandler(self, sgcb.self, internalActiveSettingGroupChangedHandlerRef, IntPtr.Zero);
+			}
+
+            #endregion
+
+            #region 编辑定值组
+
+            [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+            private delegate int InternalEditSettingGroupChangedHandler(IntPtr parameter, IntPtr sgcb, uint newEditSg, IntPtr connection);
+
+			[DllImport("iec61850.dll", CallingConvention = CallingConvention.Winapi)]
+			static extern void IedServer_setEditSettingGroupChangedHandler(IntPtr self, IntPtr sgcb, InternalEditSettingGroupChangedHandler handler, IntPtr parameter);
+
+			private InternalEditSettingGroupChangedHandler internalEditSettingGroupChangedHandlerRef = null;
+
+			private EditSettingGroupChangedHandler editSettingGroupChangedHandler = null;
+			private object editSettingGroupChangedHandlerParameter = null;
+
+			int internalEditSettingGroupChangedHandler(IntPtr parameter, IntPtr sgcb, uint newEditSg, IntPtr connection)
+			{
+				ClientConnection con = null;
+
+				clientConnections.TryGetValue(connection, out con);
+
+				var result = editSettingGroupChangedHandler(editSettingGroupChangedHandlerParameter, new SettingGroupControlBlock(sgcb), newEditSg, con);
+
+				return result ? 1 : 0;
+			}
+
+			public void SetEditSettingGroupChangedHandler(SettingGroupControlBlock sgcb, EditSettingGroupChangedHandler handler, object parameter)
+			{
+				editSettingGroupChangedHandler = handler;
+				editSettingGroupChangedHandlerParameter = parameter;
+
+				if (internalEditSettingGroupChangedHandlerRef == null)
+					internalEditSettingGroupChangedHandlerRef = new InternalEditSettingGroupChangedHandler(internalEditSettingGroupChangedHandler);
+
+				IedServer_setEditSettingGroupChangedHandler(self, sgcb.self, internalEditSettingGroupChangedHandlerRef, IntPtr.Zero);
+			}
+
+			#endregion
+
+			#region 确认定值组
+
+			//[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+			private delegate void InternalEditSettingGroupConfirmationHandler(IntPtr parameter, IntPtr sgcb, uint editSg);
+
+			[DllImport("iec61850.dll", CallingConvention = CallingConvention.Winapi)]
+			static extern void IedServer_setEditSettingGroupConfirmationHandler(IntPtr self, IntPtr sgcb, InternalEditSettingGroupConfirmationHandler handler, IntPtr parameter);
+
+			private InternalEditSettingGroupConfirmationHandler internalEditSettingGroupConfirmationHandlerRef = null;
+
+			private EditSettingGroupConfirmationHandler editSettingGroupConfirmationHandler = null;
+			private object editSettingGroupConfirmationHandlerParameter = null;
+
+			void internalEditSettingGroupConfirmationHandler(IntPtr parameter, IntPtr sgcb, uint editSg)
+			{
+				editSettingGroupConfirmationHandler(editSettingGroupConfirmationHandlerParameter, new SettingGroupControlBlock(sgcb), editSg);
+			}
+
+			public void SetEditSettingGroupConfirmationHandler(SettingGroupControlBlock sgcb, EditSettingGroupConfirmationHandler handler, object parameter)
+			{
+				editSettingGroupConfirmationHandler = handler;
+				editSettingGroupConfirmationHandlerParameter = parameter;
+
+				if (internalEditSettingGroupConfirmationHandlerRef == null)
+					internalEditSettingGroupConfirmationHandlerRef = new InternalEditSettingGroupConfirmationHandler(internalEditSettingGroupConfirmationHandler);
+
+				IedServer_setEditSettingGroupConfirmationHandler(self, sgcb.self, internalEditSettingGroupConfirmationHandlerRef, IntPtr.Zero);
+			}
+
+			#endregion
+
+			#endregion
+
+			#region 文件服务相关回调处理
+
+			//[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+			private delegate int InternalMmsFileAccessHandler(IntPtr parameter, IntPtr connection, int service, string localFilename, string otherFilename);
+
+			[DllImport("iec61850.dll", CallingConvention = CallingConvention.Winapi)]
+			static extern void MmsServer_installFileAccessHandler(IntPtr self, InternalMmsFileAccessHandler handler, IntPtr parameter);
+
+			private InternalMmsFileAccessHandler internalMmsFileAccessHandler = null;
+
+			private FileAccessHandler mmsFileAccessHandler = null;
+			private object mmsFileAccessHandlerParameter = null;
+
+			int fileAccessHandler(IntPtr parameter, IntPtr connection, int service, string localFilename, string otherFilename)
+			{
+				ClientConnection con = null;
+
+				clientConnections.TryGetValue(connection, out con);
+
+				return (int)mmsFileAccessHandler(mmsFileAccessHandlerParameter, con, (MmsFileServiceType)service, localFilename, otherFilename);
+			}
+
+			public void SetFileAccessHandler(FileAccessHandler handler, object parameter)
+			{
+				mmsFileAccessHandler = handler;
+				mmsFileAccessHandlerParameter = parameter;
+
+				if (internalMmsFileAccessHandler == null)
+					internalMmsFileAccessHandler = new InternalMmsFileAccessHandler(fileAccessHandler);
+
+				IntPtr mmsServer = IedServer_getMmsServer(self);
+
+				MmsServer_installFileAccessHandler(mmsServer, internalMmsFileAccessHandler, IntPtr.Zero);
+			}
+
+			#endregion
+
+
 			public delegate void ConnectionIndicationHandler(IedServer iedServer, ClientConnection clientConnection, bool connected, object parameter);
 
 			private ConnectionIndicationHandler connectionHandler = null;
@@ -1182,6 +1470,7 @@ namespace IEC61850
 			private InternalControlHandler internalControlHandlerRef = null;
 			private InternalControlPerformCheckHandler internalControlPerformCheckHandlerRef = null;
 			private InternalControlWaitForExecutionHandler internalControlWaitForExecutionHandlerRef = null;
+			private InternalWriteAccessHandler internalWriteAccessHandlerRef = null;
 
 			internal class ControlHandlerInfo {
 				public DataObject controlObject = null;
@@ -1489,8 +1778,9 @@ namespace IEC61850
 			{
 				writeAccessHandlers.Add (dataAttr.self, new WriteAccessHandlerInfo(handler, parameter, dataAttr));
 				//writeAccessHandlers.Item [dataAttr.self] = handler;
-
-				IedServer_handleWriteAccess (self, dataAttr.self, WriteAccessHandlerImpl, IntPtr.Zero);
+				if (internalWriteAccessHandlerRef == null)
+					internalWriteAccessHandlerRef = new InternalWriteAccessHandler(WriteAccessHandlerImpl);
+				IedServer_handleWriteAccess (self, dataAttr.self, internalWriteAccessHandlerRef, IntPtr.Zero);
 			}
 
 			public void SetWriteAccessPolicy(FunctionalConstraint fc, AccessPolicy policy)
