@@ -235,6 +235,23 @@ namespace IEC61850
 			ALARM = 3
 		}
 
+		public class CAC
+		{
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CAC_Unit_create(string name, IntPtr parent, bool hasMagnitude);
+
+			public static DataAttribute Create_CAC_Unit(ModelNode parent, string name, bool hasMagnitude)
+			{
+				IntPtr self = CAC_Unit_create(name, parent.self, hasMagnitude);
+
+				if (self != IntPtr.Zero)
+					return new DataAttribute(self);
+				else
+					return null;
+			}
+
+		}
+
 		/// <summary>
 		/// The CDC class contains helper functions to create DataObject instances for the
 		/// most common Common Data Classes.
@@ -779,6 +796,9 @@ namespace IEC61850
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern int ModelNode_getType(IntPtr self);
 
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr ModelNode_getChildWithFc(IntPtr self, string name, FunctionalConstraint fc);
+
 			public IntPtr self;
 
 			internal ModelNode()
@@ -814,6 +834,35 @@ namespace IEC61850
 
 				default:
 					return new ModelNode (childPtr);
+				}
+
+			}
+
+			public ModelNode GetChildWithFc(string name, FunctionalConstraint fc)
+			{
+				IntPtr childPtr = ModelNode_getChildWithFc(self, name, fc);
+
+				if (childPtr == IntPtr.Zero)
+					return null;
+
+				int nodeType = ModelNode_getType(childPtr);
+
+				switch (nodeType)
+				{
+					case 0:
+						return new LogicalDevice(childPtr);
+
+					case 1:
+						return new LogicalNode(childPtr);
+
+					case 2:
+						return new DataObject(childPtr);
+
+					case 3:
+						return new DataAttribute(childPtr);
+
+					default:
+						return new ModelNode(childPtr);
 				}
 
 			}
@@ -1308,7 +1357,7 @@ namespace IEC61850
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             private delegate int InternalActiveSettingGroupChangedHandler(IntPtr parameter, IntPtr sgcb, uint newActSg, IntPtr connection);
 
-			[DllImport("iec61850.dll", CallingConvention = CallingConvention.Winapi)]
+			[DllImport("iec61850", CallingConvention = CallingConvention.Winapi)]
 			static extern void IedServer_setActiveSettingGroupChangedHandler(IntPtr self, IntPtr sgcb, InternalActiveSettingGroupChangedHandler handler, IntPtr parameter);
 
 			private InternalActiveSettingGroupChangedHandler internalActiveSettingGroupChangedHandlerRef = null;
@@ -1345,7 +1394,7 @@ namespace IEC61850
             [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
             private delegate int InternalEditSettingGroupChangedHandler(IntPtr parameter, IntPtr sgcb, uint newEditSg, IntPtr connection);
 
-			[DllImport("iec61850.dll", CallingConvention = CallingConvention.Winapi)]
+			[DllImport("iec61850", CallingConvention = CallingConvention.Winapi)]
 			static extern void IedServer_setEditSettingGroupChangedHandler(IntPtr self, IntPtr sgcb, InternalEditSettingGroupChangedHandler handler, IntPtr parameter);
 
 			private InternalEditSettingGroupChangedHandler internalEditSettingGroupChangedHandlerRef = null;
@@ -1382,7 +1431,7 @@ namespace IEC61850
 			//[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 			private delegate void InternalEditSettingGroupConfirmationHandler(IntPtr parameter, IntPtr sgcb, uint editSg);
 
-			[DllImport("iec61850.dll", CallingConvention = CallingConvention.Winapi)]
+			[DllImport("iec61850", CallingConvention = CallingConvention.Winapi)]
 			static extern void IedServer_setEditSettingGroupConfirmationHandler(IntPtr self, IntPtr sgcb, InternalEditSettingGroupConfirmationHandler handler, IntPtr parameter);
 
 			private InternalEditSettingGroupConfirmationHandler internalEditSettingGroupConfirmationHandlerRef = null;
@@ -1415,7 +1464,7 @@ namespace IEC61850
 			//[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
 			private delegate int InternalMmsFileAccessHandler(IntPtr parameter, IntPtr connection, int service, string localFilename, string otherFilename);
 
-			[DllImport("iec61850.dll", CallingConvention = CallingConvention.Winapi)]
+			[DllImport("iec61850", CallingConvention = CallingConvention.Winapi)]
 			static extern void MmsServer_installFileAccessHandler(IntPtr self, InternalMmsFileAccessHandler handler, IntPtr parameter);
 
 			private InternalMmsFileAccessHandler internalMmsFileAccessHandler = null;
@@ -1787,7 +1836,12 @@ namespace IEC61850
 			{
 				IedServer_setWriteAccessPolicy (self, fc, policy);
 			}
-		
+
+			public void SetFilestoreBasepath(string basepath)
+			{
+				IntPtr mmsServer = IedServer_getMmsServer(self);
+				MmsServer_setFilestoreBasepath(mmsServer, basepath);
+			}
 
 			public void LockDataModel()
 			{

@@ -148,6 +148,9 @@ namespace IEC61850
             static extern IntPtr MmsValue_newVisibleString(string value);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr MmsValue_newMmsString(string value);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr MmsValue_createArray(IntPtr elementType, int size);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
@@ -254,7 +257,15 @@ namespace IEC61850
                 valueReference = MmsValue_newVisibleString(value);
             }
 
-            public void Dispose()
+			public MmsValue(string value, bool isUnicodeString)
+			{
+				if (!isUnicodeString)
+					valueReference = MmsValue_newVisibleString(value);
+				else
+					valueReference = MmsValue_newMmsString(value);
+			}
+
+			public void Dispose()
             {
                 lock (this) {
                     if (valueReference != IntPtr.Zero) {
