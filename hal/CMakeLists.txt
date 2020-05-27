@@ -94,7 +94,7 @@ set (libhal_SRCS
 )
 ELSEIF(${CMAKE_SYSTEM_NAME} MATCHES "FreeBSD")
 set (libhal_SRCS
-    ${libhal_bsd_SRCS}}
+    ${libhal_bsd_SRCS}
 )
 ELSE()
 set (libhal_SRCS
@@ -106,18 +106,18 @@ ENDIF(WIN32)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC" )
 #set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC" )
 
-if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/../third_party/mbedtls/mbedtls-2.6.0)
+if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/../third_party/mbedtls/mbedtls-2.16)
 message("Found mbedtls -> can compile with TLS support")
 set(WITH_MBEDTLS 1)
-endif(EXISTS ${CMAKE_CURRENT_LIST_DIR}/../third_party/mbedtls/mbedtls-2.6.0)
+endif(EXISTS ${CMAKE_CURRENT_LIST_DIR}/../third_party/mbedtls/mbedtls-2.16)
 
 if(WITH_MBEDTLS)
 include_directories(
 	${CMAKE_CURRENT_LIST_DIR}/tls/mbedtls
-    ${CMAKE_CURRENT_LIST_DIR}/../third_party/mbedtls/mbedtls-2.6.0/include
+    ${CMAKE_CURRENT_LIST_DIR}/../third_party/mbedtls/mbedtls-2.16/include
 )
 
-file(GLOB tls_SRCS ${CMAKE_CURRENT_LIST_DIR}/../third_party/mbedtls/mbedtls-2.6.0/library/*.c)
+file(GLOB tls_SRCS ${CMAKE_CURRENT_LIST_DIR}/../third_party/mbedtls/mbedtls-2.16/library/*.c)
 
 add_definitions(-DMBEDTLS_CONFIG_FILE="mbedtls_config.h")
 
@@ -137,6 +137,8 @@ endif(WITH_MBEDTLS)
 add_library (hal STATIC ${libhal_SRCS})
 
 add_library (hal-shared STATIC ${libhal_SRCS})
+
+target_compile_definitions(hal-shared PRIVATE EXPORT_FUNCTIONS_FOR_DLL)
 
 SET_TARGET_PROPERTIES(hal-shared PROPERTIES
   COMPILE_FLAGS "-fPIC"
@@ -164,3 +166,18 @@ target_link_libraries(hal
 	${CMAKE_CURRENT_SOURCE_DIR}/../third_party/winpcap/Lib/packet.lib
 )
 ENDIF(WITH_WPCAP)
+
+set(BINDIR "bin")
+set(LIBDIR "lib")
+if(UNIX)
+    # GNUInstallDirs is required for Debian multiarch
+    include(GNUInstallDirs)
+    set(LIBDIR ${CMAKE_INSTALL_LIBDIR})
+    set(BINDIR ${CMAKE_INSTALL_BINDIR})
+endif()
+
+install (TARGETS hal hal-shared
+	RUNTIME DESTINATION ${BINDIR} COMPONENT Applications
+	ARCHIVE DESTINATION ${LIBDIR} COMPONENT Libraries
+    LIBRARY DESTINATION ${LIBDIR} COMPONENT Libraries
+)

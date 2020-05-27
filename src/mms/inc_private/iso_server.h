@@ -66,14 +66,27 @@ typedef void
 typedef void
 (*MessageReceivedHandler)(void* parameter, ByteBuffer* message, ByteBuffer* response);
 
+typedef void
+(*UserLayerTickHandler)(void* parameter);
+
 LIB61850_INTERNAL char*
 IsoConnection_getPeerAddress(IsoConnection self);
+
+LIB61850_INTERNAL char*
+IsoConnection_getLocalAddress(IsoConnection self);
 
 LIB61850_INTERNAL void
 IsoConnection_close(IsoConnection self);
 
 LIB61850_INTERNAL void
-IsoConnection_installListener(IsoConnection self, MessageReceivedHandler handler,
+IsoConnection_lock(IsoConnection self);
+
+LIB61850_INTERNAL void
+IsoConnection_unlock(IsoConnection self);
+
+LIB61850_INTERNAL void
+IsoConnection_installListener(IsoConnection self, MessageReceivedHandler rcvdHandler,
+        UserLayerTickHandler tickHandler,
         void* parameter);
 
 LIB61850_INTERNAL void*
@@ -86,7 +99,7 @@ IsoConnection_getSecurityToken(IsoConnection self);
  *        (handlerMode)
  */
 LIB61850_INTERNAL void
-IsoConnection_sendMessage(IsoConnection self, ByteBuffer* message, bool handlerMode);
+IsoConnection_sendMessage(IsoConnection self, ByteBuffer* message);
 
 LIB61850_INTERNAL IsoServer
 IsoServer_create(TLSConfiguration tlsConfiguration);
@@ -133,6 +146,9 @@ IsoServer_startListeningThreadless(IsoServer self);
  */
 LIB61850_INTERNAL void
 IsoServer_processIncomingMessages(IsoServer self);
+
+LIB61850_INTERNAL int
+IsoServer_getConnectionCounter(IsoServer self);
 
 LIB61850_INTERNAL int
 IsoServer_waitReady(IsoServer self, unsigned int timeoutMs);

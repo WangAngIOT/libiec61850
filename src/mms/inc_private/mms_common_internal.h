@@ -1,7 +1,7 @@
 /*
  *  mms_common_internal.h
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2019 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -42,11 +42,17 @@
 
 #include "hal_filesystem.h"
 
+typedef struct sMmsOutstandingCall* MmsOutstandingCall;
+
 typedef struct {
         int32_t frsmId;
         uint32_t readPosition;
         uint32_t fileSize;
         FileHandle fileHandle;
+
+#if (MMS_OBTAIN_FILE_SERVICE == 1)
+        MmsOutstandingCall obtainRequest;
+#endif
 } MmsFileReadStateMachine;
 
 /* include for MmsFileReadHandler definition */
@@ -56,7 +62,7 @@ LIB61850_INTERNAL bool
 mmsMsg_parseFileOpenResponse(uint8_t* buffer, int bufPos, int maxBufPos, int32_t* frsmId, uint32_t* fileSize, uint64_t* lastModified);
 
 LIB61850_INTERNAL bool
-mmsMsg_parseFileReadResponse(uint8_t* buffer, int bufPos, int maxBufPos, bool* moreFollows, uint8_t** dataBuffer, int* dataLength);
+mmsMsg_parseFileReadResponse(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t invokeId, int32_t frsmId,  bool* moreFollows, MmsConnection_FileReadHandler handler, void* handlerParameter);
 
 LIB61850_INTERNAL void
 mmsMsg_createFileReadResponse(int maxPduSize, uint32_t invokeId, ByteBuffer* response,  MmsFileReadStateMachine* frsm);
@@ -92,10 +98,10 @@ LIB61850_INTERNAL void
 mmsMsg_createMmsRejectPdu(uint32_t* invokeId, int reason, ByteBuffer* response);
 
 LIB61850_INTERNAL int
-mmsMsg_parseConfirmedErrorPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId, MmsServiceError* serviceError);
+mmsMsg_parseConfirmedErrorPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId, bool* hasInvokeId, MmsServiceError* serviceError);
 
 LIB61850_INTERNAL int
-mmsMsg_parseRejectPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId, int* rejectType, int* rejectReason);
+mmsMsg_parseRejectPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId, bool* hasInvokeId, int* rejectType, int* rejectReason);
 
 LIB61850_INTERNAL MmsValue*
 mmsMsg_parseDataElement(Data_t* dataElement);

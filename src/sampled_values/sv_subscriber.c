@@ -121,7 +121,7 @@ SVReceiver_disableDestAddrCheck(SVReceiver self)
 void
 SVReceiver_enableDestAddrCheck(SVReceiver self)
 {
-    self->checkDestAddr = false;
+    self->checkDestAddr = true;
 }
 
 void
@@ -157,38 +157,34 @@ svReceiverLoop(void* threadParameter)
 {
     SVReceiver self = (SVReceiver) threadParameter;
 
-    self->running = true;
     self->stopped = false;
 
-    if (SVReceiver_startThreadless(self)) {
+    while (self->running) {
 
-        while (self->running) {
-
-            if (SVReceiver_tick(self) == false)
-                Thread_sleep(1);
-        }
-
-        SVReceiver_stopThreadless(self);
-    }
-    else {
-        if (DEBUG_SV_SUBSCRIBER)
-            printf("SV_SUBSCRIBER: Failed to start SV receiver\n");
+        if (SVReceiver_tick(self) == false)
+            Thread_sleep(1);
     }
 
     self->stopped = true;
 }
 
-
 void
 SVReceiver_start(SVReceiver self)
 {
-    Thread thread = Thread_create((ThreadExecutionFunction) svReceiverLoop, (void*) self, true);
+    if (SVReceiver_startThreadless(self)) {
 
-    if (thread != NULL) {
         if (DEBUG_SV_SUBSCRIBER)
             printf("SV_SUBSCRIBER: SV receiver started for interface %s\n", self->interfaceId);
 
-        Thread_start(thread);
+        Thread thread = Thread_create((ThreadExecutionFunction) svReceiverLoop, (void*) self, true);
+
+        if (thread) {
+            Thread_start(thread);
+        }
+        else {
+            if (DEBUG_SV_SUBSCRIBER)
+                printf("SV_SUBSCRIBER: Failed to start thread\n");
+        }
     }
     else {
         if (DEBUG_SV_SUBSCRIBER)
@@ -206,10 +202,12 @@ SVReceiver_isRunning(SVReceiver self)
 void
 SVReceiver_stop(SVReceiver self)
 {
-    self->running = false;
+    if (self->running) {
+        SVReceiver_stopThreadless(self);
 
-    while (self->stopped == false)
-        Thread_sleep(1);
+        while (self->stopped == false)
+            Thread_sleep(1);
+    }
 }
 
 void
@@ -217,6 +215,9 @@ SVReceiver_destroy(SVReceiver self)
 {
     LinkedList_destroyDeep(self->subscriberList,
             (LinkedListValueDeleteFunction) SVSubscriber_destroy);
+
+    if (self->interfaceId != NULL)
+        GLOBAL_FREEMEM(self->interfaceId);
 
 #if (CONFIG_MMS_THREADLESS_STACK == 0)
         Semaphore_destroy(self->subscriberListLock);
@@ -247,7 +248,8 @@ SVReceiver_startThreadless(SVReceiver self)
 void
 SVReceiver_stopThreadless(SVReceiver self)
 {
-    Ethernet_destroySocket(self->ethSocket);
+    if (self->ethSocket)
+        Ethernet_destroySocket(self->ethSocket);
 
     self->running = false;
 }
@@ -401,19 +403,7 @@ parseSVPayload(SVReceiver self, SVSubscriber subscriber, uint8_t* buffer, int ap
             uint8_t tag = buffer[bufPos++];
 
             bufPos = BerDecoder_decodeLength(buffer, &elementLength, bufPos, svEnd);
-            if (bufPos < 0) {
-                if (DEBUG_SV_SUBSCRIBER) printf("SV_SUBSCRIBER: Malformed message: failed to decode BER length tag!\n");
-                return;
-            }
-
-            if (bufPos + elementLength > apduLength) {
-                if (DEBUG_SV_SUBSCRIBER)
-                    printf("SV_SUBSCRIBER: Malformed message: sub element is too large!\n");
-
-                goto exit_error;
-            }
-
-            if (bufPos == -1)
+            if (bufPos < 0)
                 goto exit_error;
 
             switch(tag) {
@@ -454,7 +444,7 @@ parseSVMessage(SVReceiver self, int numbytes)
     if (numbytes < 22) return;
 
     /* Ethernet source address */
-    uint8_t* srcAddr = buffer;
+    uint8_t* dstAddr = buffer;
 
     /* skip ethernet addresses */
     bufPos = 12;
@@ -517,13 +507,13 @@ parseSVMessage(SVReceiver self, int numbytes)
         if (subscriber->appId == appId) {
 
             if (self->checkDestAddr) {
-                if (memcmp(srcAddr, subscriber->ethAddr, 6) == 0) {
+                if (memcmp(dstAddr, subscriber->ethAddr, 6) == 0) {
                     subscriberFound = true;
                     break;
                 }
                 else
                     if (DEBUG_SV_SUBSCRIBER)
-                        printf("SV_SUBSCRIBER: Checking ethernet src address failed!\n");
+                        printf("SV_SUBSCRIBER: Checking ethernet dest address failed!\n");
             }
             else {
                 subscriberFound = true;
@@ -545,7 +535,7 @@ parseSVMessage(SVReceiver self, int numbytes)
         parseSVPayload(self, subscriber, buffer + bufPos, apduLength);
     else {
         if (DEBUG_SV_SUBSCRIBER)
-            printf("SV_SUBSCRIBER: SV message ignored due to unknown APPID value\n");
+            printf("SV_SUBSCRIBER: SV message ignored due to unknown APPID value or dest address mismatch\n");
     }
 }
 

@@ -1,7 +1,7 @@
 /*
  *  ied_server.c
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2020 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -25,6 +25,7 @@
 #include "mms_mapping.h"
 #include "mms_mapping_internal.h"
 #include "mms_value_internal.h"
+#include "mms_server_libinternal.h"
 #include "control.h"
 #include "stack_config.h"
 #include "ied_server_private.h"
@@ -99,6 +100,7 @@ createControlObjects(IedServer self, MmsDomain* domain, char* lnName, MmsVariabl
                         if (DEBUG_IED_SERVER)
                             printf("IED_SERVER: createControlObjects: Unknown element in CO: %s\n", coElementSpec->name);
 
+                        break;
                     }
                 }
 
@@ -426,13 +428,18 @@ IedServer_createWithConfig(IedModel* dataModel, TLSConfiguration tlsConfiguratio
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
         self->dataModelLock = Semaphore_create(1);
+        self->clientConnectionsLock = Semaphore_create(1);
 #endif /* (CONFIG_MMS_SERVER_CONFIG_SERVICES_AT_RUNTIME == 1) */
 
 #if (CONFIG_IEC61850_REPORT_SERVICE == 1)
-        if (serverConfiguration)
-            self->reportBufferSize = serverConfiguration->reportBufferSize;
-        else
-            self->reportBufferSize = CONFIG_REPORTING_DEFAULT_REPORT_BUFFER_SIZE;
+        if (serverConfiguration) {
+            self->reportBufferSizeBRCBs = serverConfiguration->reportBufferSize;
+            self->reportBufferSizeURCBs = serverConfiguration->reportBufferSizeURCBs;
+        }
+        else {
+            self->reportBufferSizeBRCBs = CONFIG_REPORTING_DEFAULT_REPORT_BUFFER_SIZE;
+            self->reportBufferSizeURCBs = CONFIG_REPORTING_DEFAULT_REPORT_BUFFER_SIZE;
+        }
 #endif
 
         self->mmsMapping = MmsMapping_create(dataModel, self);
@@ -510,24 +517,17 @@ IedServer_destroy(IedServer self)
 #endif
     }
 
+#if ((CONFIG_MMS_SINGLE_THREADED == 1) && (CONFIG_MMS_THREADLESS_STACK == 0))
+
+    if (self->serverThread)
+        Thread_destroy(self->serverThread);
+
+#endif
+
     MmsServer_destroy(self->mmsServer);
 
     if (self->localIpAddress != NULL)
         GLOBAL_FREEMEM(self->localIpAddress);
-
-#if ((CONFIG_MMS_SINGLE_THREADED == 1) && (CONFIG_MMS_THREADLESS_STACK == 0))
-
-    /* trigger stopping background task thread */
-    if (self->mmsMapping->reportThreadRunning) {
-        self->mmsMapping->reportThreadRunning = false;
-
-        /* waiting for thread to finish */
-        while (self->mmsMapping->reportThreadFinished == false) {
-            Thread_sleep(10);
-        }
-    }
-
-#endif
 
     MmsMapping_destroy(self->mmsMapping);
 
@@ -535,7 +535,20 @@ IedServer_destroy(IedServer self)
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
     Semaphore_destroy(self->dataModelLock);
+    Semaphore_destroy(self->clientConnectionsLock);
 #endif
+
+#if (CONFIG_IEC61850_SUPPORT_SERVER_IDENTITY == 1)
+
+    if (self->vendorName)
+        GLOBAL_FREEMEM(self->vendorName);
+
+    if (self->modelName)
+        GLOBAL_FREEMEM(self->modelName);
+
+    if (self->revision)
+        GLOBAL_FREEMEM(self->revision);
+#endif /* (CONFIG_IEC61850_SUPPORT_SERVER_IDENTITY == 1) */
 
     GLOBAL_FREEMEM(self);
 }
@@ -563,28 +576,19 @@ singleThreadedServerThread(void* parameter)
 
     bool running = true;
 
-    mmsMapping->reportThreadFinished = false;
-    mmsMapping->reportThreadRunning = true;
-
     if (DEBUG_IED_SERVER)
         printf("IED_SERVER: server thread started!\n");
 
     while (running) {
-
-        if (IedServer_waitReady(self, 25) > 0)
-            MmsServer_handleIncomingMessages(self->mmsServer);
+        MmsServer_handleIncomingMessages(self->mmsServer);
 
         IedServer_performPeriodicTasks(self);
-
-        Thread_sleep(1);
 
         running = mmsMapping->reportThreadRunning;
     }
 
     if (DEBUG_IED_SERVER)
         printf("IED_SERVER: server thread finished!\n");
-
-    mmsMapping->reportThreadFinished = true;
 }
 #endif /* (CONFIG_MMS_SINGLE_THREADED == 1) */
 #endif /* (CONFIG_MMS_THREADLESS_STACK != 1) */
@@ -598,11 +602,12 @@ IedServer_start(IedServer self, int tcpPort)
 #if (CONFIG_MMS_SINGLE_THREADED == 1)
         MmsServer_startListeningThreadless(self->mmsServer, tcpPort);
 
-        Thread serverThread = Thread_create((ThreadExecutionFunction) singleThreadedServerThread, (void*) self, true);
+        self->mmsMapping->reportThreadRunning = true;
 
-        Thread_start(serverThread);
+        self->serverThread = Thread_create((ThreadExecutionFunction) singleThreadedServerThread, (void*) self, false);
+
+        Thread_start(self->serverThread);
 #else
-
         MmsServer_startListening(self->mmsServer, tcpPort);
         MmsMapping_startEventWorkerThread(self->mmsMapping);
 #endif
@@ -634,6 +639,9 @@ IedServer_stop(IedServer self)
         MmsMapping_stopEventWorkerThread(self->mmsMapping);
 
 #if (CONFIG_MMS_SINGLE_THREADED == 1)
+        Thread_destroy(self->serverThread);
+        self->serverThread = NULL;
+
         MmsServer_stopListeningThreadless(self->mmsServer);
 #else
         MmsServer_stopListening(self->mmsServer);
@@ -668,6 +676,12 @@ IedServer_startThreadless(IedServer self, int tcpPort)
         MmsServer_startListeningThreadless(self->mmsServer, tcpPort);
         self->running = true;
     }
+}
+
+int
+IedServer_getNumberOfOpenConnections(IedServer self)
+{
+    return MmsServer_getConnectionCounter(self->mmsServer);
 }
 
 int
@@ -742,6 +756,9 @@ lookupControlObject(IedServer self, DataObject* node)
 
     ControlObject* controlObject = MmsMapping_getControlObject(self->mmsMapping, domain,
             lnName, objectName);
+
+    if (controlObject)
+        controlObject->dataObject = node;
 
     return controlObject;
 }
@@ -978,17 +995,23 @@ IedServer_updateAttributeValue(IedServer self, DataAttribute* dataAttribute, Mms
         checkForUpdateTrigger(self, dataAttribute);
     else {
 
+        if (dataAttribute->type == IEC61850_BOOLEAN) {
+            /* Special treatment because of transient option */
+            IedServer_updateBooleanAttributeValue(self, dataAttribute, MmsValue_getBoolean(value));
+        }
+        else {
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
-        Semaphore_wait(self->dataModelLock);
+            Semaphore_wait(self->dataModelLock);
 #endif
 
-        MmsValue_update(dataAttribute->mmsValue, value);
+            MmsValue_update(dataAttribute->mmsValue, value);
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
-        Semaphore_post(self->dataModelLock);
+            Semaphore_post(self->dataModelLock);
 #endif
 
-        checkForChangedTriggers(self, dataAttribute);
+            checkForChangedTriggers(self, dataAttribute);
+        }
     }
 }
 
@@ -1042,7 +1065,7 @@ IedServer_updateInt32AttributeValue(IedServer self, DataAttribute* dataAttribute
 }
 
 void
-IedServer_udpateDbposValue(IedServer self, DataAttribute* dataAttribute, Dbpos value)
+IedServer_updateDbposValue(IedServer self, DataAttribute* dataAttribute, Dbpos value)
 {
     Dbpos currentValue = Dbpos_fromMmsValue(dataAttribute->mmsValue);
 
@@ -1147,10 +1170,17 @@ IedServer_updateBooleanAttributeValue(IedServer self, DataAttribute* dataAttribu
     bool currentValue = MmsValue_getBoolean(dataAttribute->mmsValue);
 
     if (currentValue == value) {
-
         checkForUpdateTrigger(self, dataAttribute);
     }
     else {
+
+        bool callCheckTriggers = true;
+
+        if (dataAttribute->triggerOptions & TRG_OPT_TRANSIENT) {
+            if (currentValue == true)
+                callCheckTriggers = false;
+        }
+
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
         Semaphore_wait(self->dataModelLock);
 #endif
@@ -1159,7 +1189,8 @@ IedServer_updateBooleanAttributeValue(IedServer self, DataAttribute* dataAttribu
         Semaphore_post(self->dataModelLock);
 #endif
 
-        checkForChangedTriggers(self, dataAttribute);
+        if (callCheckTriggers)
+            checkForChangedTriggers(self, dataAttribute);
     }
 }
 
@@ -1277,6 +1308,21 @@ IedServer_updateQuality(IedServer self, DataAttribute* dataAttribute, Quality qu
 
 }
 
+void
+IedServer_useGooseVlanTag(IedServer self, LogicalNode* ln, const char* gcbName, bool useVlanTag)
+{
+#if (CONFIG_INCLUDE_GOOSE_SUPPORT == 1)
+    MmsMapping_useGooseVlanTag(self->mmsMapping, ln, gcbName, useVlanTag);
+#endif /* (CONFIG_INCLUDE_GOOSE_SUPPORT == 1) */
+}
+
+void
+IedServer_setGooseInterfaceIdEx(IedServer self, LogicalNode* ln, const char* gcbName, const char* interfaceId)
+{
+#if (CONFIG_INCLUDE_GOOSE_SUPPORT == 1)
+    MmsMapping_setGooseInterfaceId(self->mmsMapping, ln, gcbName, interfaceId);
+#endif /* (CONFIG_INCLUDE_GOOSE_SUPPORT == 1) */
+}
 
 void
 IedServer_enableGoosePublishing(IedServer self)
@@ -1347,12 +1393,10 @@ IedServer_handleWriteAccess(IedServer self, DataAttribute* dataAttribute, WriteA
     if (dataAttribute == NULL) {
         if (DEBUG_IED_SERVER)
             printf("IED_SERVER: IedServer_handleWriteAccess - dataAttribute == NULL!\n");
-
-        /* Cause a trap */
-        *((volatile int*) NULL) = 1;
     }
-
-    MmsMapping_installWriteAccessHandler(self->mmsMapping, dataAttribute, handler, parameter);
+    else {
+        MmsMapping_installWriteAccessHandler(self->mmsMapping, dataAttribute, handler, parameter);
+    }
 }
 
 void
@@ -1486,9 +1530,35 @@ IedServer_setLogStorage(IedServer self, const char* logRef, LogStorage logStorag
 #endif
 }
 
+void
+IedServer_setServerIdentity(IedServer self, const char* vendor, const char* model, const char* revision)
+{
+#if (CONFIG_IEC61850_SUPPORT_SERVER_IDENTITY == 1)
+
+    if (self->vendorName)
+        GLOBAL_FREEMEM(self->vendorName);
+
+    if (self->modelName)
+        GLOBAL_FREEMEM(self->modelName);
+
+    if (self->revision)
+        GLOBAL_FREEMEM(self->revision);
+
+    self->vendorName = StringUtils_copyString(vendor);
+    self->modelName = StringUtils_copyString(model);
+    self->revision = StringUtils_copyString(revision);
+
+    MmsServer_setServerIdentity(self->mmsServer, self->vendorName, self->modelName, self->revision);
+#endif
+}
+
 ClientConnection
 private_IedServer_getClientConnectionByHandle(IedServer self, void* serverConnectionHandle)
 {
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Semaphore_wait(self->clientConnectionsLock);
+#endif
+
     LinkedList element = LinkedList_getNext(self->clientConnections);
     ClientConnection matchingConnection = NULL;
 
@@ -1503,19 +1573,39 @@ private_IedServer_getClientConnectionByHandle(IedServer self, void* serverConnec
         element = LinkedList_getNext(element);
     }
 
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Semaphore_post(self->clientConnectionsLock);
+#endif
+
     return matchingConnection;
 }
 
 void
 private_IedServer_addNewClientConnection(IedServer self, ClientConnection newClientConnection)
 {
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Semaphore_wait(self->clientConnectionsLock);
+#endif
+
     LinkedList_add(self->clientConnections, (void*) newClientConnection);
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Semaphore_post(self->clientConnectionsLock);
+#endif
 }
 
 void
 private_IedServer_removeClientConnection(IedServer self, ClientConnection clientConnection)
 {
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Semaphore_wait(self->clientConnectionsLock);
+#endif
+
     LinkedList_remove(self->clientConnections, clientConnection);
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Semaphore_post(self->clientConnectionsLock);
+#endif
 }
 
 

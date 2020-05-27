@@ -1,7 +1,7 @@
 /*
  *  ied_connection.c
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2019 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -95,6 +95,15 @@ iedConnection_mapMmsErrorToIedError(MmsError mmsError)
 
     case MMS_ERROR_ACCESS_OBJECT_VALUE_INVALID:
     	return IED_ERROR_OBJECT_VALUE_INVALID;
+
+    case MMS_ERROR_PARSING_RESPONSE:
+        return IED_ERROR_MALFORMED_MESSAGE;
+
+    case MMS_ERROR_OUTSTANDING_CALL_LIMIT:
+        return IED_ERROR_OUTSTANDING_CALL_LIMIT_REACHED;
+
+    case MMS_ERROR_DEFINITION_OBJECT_UNDEFINED:
+        return IED_ERROR_OBJECT_UNDEFINED;
 
     default:
         return IED_ERROR_UNKNOWN;
@@ -463,7 +472,7 @@ handleLastApplErrorMessage(IedConnection self, MmsValue* lastApplError)
 
     self->lastApplError.ctlNum = MmsValue_toUint32(ctlNum);
     self->lastApplError.addCause = (ControlAddCause) MmsValue_toInt32(addCause);
-    self->lastApplError.error = MmsValue_toInt32(error);
+    self->lastApplError.error = (ControlLastApplError) MmsValue_toInt32(error);
     LinkedList control = LinkedList_getNext(self->clientControls);
     while (control != NULL) {
         ControlObjectClient object = (ControlObjectClient) control->data;
@@ -484,42 +493,48 @@ informationReportHandler(void* parameter, char* domainName,
 {
     IedConnection self = (IedConnection) parameter;
 
-    if (DEBUG_IED_CLIENT)
-        printf("DEBUG_IED_CLIENT: received information report for %s\n", variableListName);
+    if (value) {
+        if (DEBUG_IED_CLIENT)
+            printf("IED_CLIENT: received information report for %s\n", variableListName);
 
-    if (domainName == NULL) {
+        if (domainName == NULL) {
 
-        if (isVariableListName) {
-            iedConnection_handleReport(self, value);
-        }
-        else {
-            if (strcmp(variableListName, "LastApplError") == 0)
-                handleLastApplErrorMessage(self, value);
+            if (isVariableListName) {
+                iedConnection_handleReport(self, value);
+            }
             else {
-                if (DEBUG_IED_CLIENT)
-                    printf("IED_CLIENT: Received unknown variable list report for list: %s\n", variableListName);
+                if (strcmp(variableListName, "LastApplError") == 0)
+                    handleLastApplErrorMessage(self, value);
+                else {
+                    if (DEBUG_IED_CLIENT)
+                        printf("IED_CLIENT: Received unknown variable list report for list: %s\n", variableListName);
+                }
             }
         }
+        else {
+            if (DEBUG_IED_CLIENT)
+                printf("IED_CLIENT: RCVD CommandTermination for %s/%s\n", domainName, variableListName);
+
+            LinkedList control = LinkedList_getNext(self->clientControls);
+
+            while (control != NULL) {
+               ControlObjectClient object = (ControlObjectClient) control->data;
+
+               const char* objectRef = ControlObjectClient_getObjectReference(object);
+
+               if (doesReportMatchControlObject(domainName, variableListName, objectRef))
+                   controlObjectClient_invokeCommandTerminationHandler(object);
+
+               control = LinkedList_getNext(control);
+            }
+        }
+
+        MmsValue_delete(value);
     }
     else {
         if (DEBUG_IED_CLIENT)
-            printf("IED_CLIENT: RCVD CommandTermination for %s/%s\n", domainName, variableListName);
-
-        LinkedList control = LinkedList_getNext(self->clientControls);
-
-        while (control != NULL) {
-           ControlObjectClient object = (ControlObjectClient) control->data;
-
-           const char* objectRef = ControlObjectClient_getObjectReference(object);
-
-           if (doesReportMatchControlObject(domainName, variableListName, objectRef))
-               controlObjectClient_invokeCommandTerminationHandler(object);
-
-           control = LinkedList_getNext(control);
-        }
+             printf("IED_CLIENT: report for %s/%s: value invalid\n", domainName, variableListName);
     }
-
-    MmsValue_delete(value);
 }
 
 static void
@@ -624,6 +639,24 @@ void
 IedConnection_setConnectTimeout(IedConnection self, uint32_t timeoutInMs)
 {
     self->connectionTimeout = timeoutInMs;
+}
+
+void
+IedConnection_setRequestTimeout(IedConnection self, uint32_t timeoutInMs)
+{
+    if (self->connection) {
+        MmsConnection_setRequestTimeout(self->connection, timeoutInMs);
+    }
+}
+
+uint32_t
+IedConnection_getRequestTimeout(IedConnection self)
+{
+    if (self->connection) {
+        return MmsConnection_getRequestTimeout(self->connection);
+    }
+    else
+        return 0;
 }
 
 IedConnectionState
@@ -1112,8 +1145,9 @@ IedConnection_readObjectAsync(IedConnection self, IedClientError* error, const c
 
     if ((err != MMS_ERROR_NONE) || (*error != IED_ERROR_OK)) {
 
-        if (err != MMS_ERROR_NONE)
+        if (err != MMS_ERROR_NONE) {
             *error = iedConnection_mapMmsErrorToIedError(err);
+        }
 
         iedConnection_releaseOutstandingCall(self, call);
 
@@ -1599,7 +1633,7 @@ IedConnection_writeFloatValue(IedConnection self, IedClientError* error, const c
     mmsValue.type = MMS_FLOAT;
     mmsValue.value.floatingPoint.exponentWidth = 8;
     mmsValue.value.floatingPoint.formatWidth = 32;
-    mmsValue.value.floatingPoint.buf = (uint8_t*) &value;
+    memcpy(mmsValue.value.floatingPoint.buf, (uint8_t*) &value, sizeof(value));
 
     IedConnection_writeObject(self, error, objectReference, fc, &mmsValue);
 }
@@ -1633,7 +1667,9 @@ void
 IedConnection_getDeviceModelFromServer(IedConnection self, IedClientError* error)
 {
     MmsError mmsError = MMS_ERROR_NONE;
-    *error = IED_ERROR_OK;
+
+    if (error)
+        *error = IED_ERROR_OK;
 
     LinkedList logicalDeviceNames = MmsConnection_getDomainNames(self->connection, &mmsError);
 
@@ -1651,24 +1687,31 @@ IedConnection_getDeviceModelFromServer(IedConnection self, IedClientError* error
         while (logicalDevice != NULL) {
             char* name = (char*) logicalDevice->data;
 
-            ICLogicalDevice* icLogicalDevice = ICLogicalDevice_create(name);
-
             LinkedList variables = MmsConnection_getDomainVariableNames(self->connection,
                     &mmsError, name);
 
-            if (variables != NULL)
+            if (variables != NULL) {
+                ICLogicalDevice* icLogicalDevice = ICLogicalDevice_create(name);
+
                 ICLogicalDevice_setVariableList(icLogicalDevice, variables);
+
+                LinkedList_add(logicalDevices, icLogicalDevice);
+            }
             else {
-                *error = iedConnection_mapMmsErrorToIedError(mmsError);
+                if (error)
+                    *error = iedConnection_mapMmsErrorToIedError(mmsError);
                 break;
             }
-
-            LinkedList_add(logicalDevices, icLogicalDevice);
 
             logicalDevice = LinkedList_getNext(logicalDevice);
         }
 
-        self->logicalDevices = logicalDevices;
+        if (mmsError != MMS_ERROR_NONE) {
+            LinkedList_destroyDeep(logicalDevices, (LinkedListValueDeleteFunction) ICLogicalDevice_destroy);
+        }
+        else {
+            self->logicalDevices = logicalDevices;
+        }
 
         LinkedList_destroy(logicalDeviceNames);
     }
@@ -1882,9 +1925,7 @@ IedConnection_getFile(IedConnection self, IedClientError* error, const char* fil
     clientFileReadHandler.retVal = true;
     clientFileReadHandler.byteReceived = 0;
 
-    bool continueRead = true;
-
-    while (continueRead == true) {
+    while (true) {
         bool moreFollows =
                 MmsConnection_fileRead(self->connection, &mmsError, frsmId, mmsFileReadHandler,
                         &clientFileReadHandler);
@@ -1928,7 +1969,7 @@ mmsConnectionFileCloseHandler (uint32_t invokeId, void* parameter, MmsError mmsE
 }
 
 static void
-mmsConnectionFileReadHandler (uint32_t invokeId, void* parameter, MmsError mmsError, uint8_t* buffer, uint32_t byteReceived,
+mmsConnectionFileReadHandler (uint32_t invokeId, void* parameter, MmsError mmsError, int32_t frsmId, uint8_t* buffer, uint32_t byteReceived,
         bool moreFollows)
 {
     IedConnection self = (IedConnection) parameter;
@@ -1945,7 +1986,7 @@ mmsConnectionFileReadHandler (uint32_t invokeId, void* parameter, MmsError mmsEr
             handler(call->specificParameter2.getFileInfo.originalInvokeId, call->callbackParameter, err, invokeId, NULL, 0, false);
 
             /* close file */
-            MmsConnection_fileCloseAsync(self->connection, &mmsError, call->specificParameter2.getFileInfo.frsmId, mmsConnectionFileCloseHandler, self);
+            call->invokeId = MmsConnection_fileCloseAsync(self->connection, &mmsError, frsmId, mmsConnectionFileCloseHandler, self);
 
             if (mmsError != MMS_ERROR_NONE)
                 iedConnection_releaseOutstandingCall(self, call);
@@ -1955,7 +1996,7 @@ mmsConnectionFileReadHandler (uint32_t invokeId, void* parameter, MmsError mmsEr
 
             if ((moreFollows == false) || (cont == false)) {
                 /* close file */
-                MmsConnection_fileCloseAsync(self->connection, &mmsError, call->specificParameter2.getFileInfo.frsmId, mmsConnectionFileCloseHandler, self);
+                call->invokeId = MmsConnection_fileCloseAsync(self->connection, &mmsError, frsmId, mmsConnectionFileCloseHandler, self);
 
                 if (mmsError != MMS_ERROR_NONE)
                     iedConnection_releaseOutstandingCall(self, call);
@@ -1963,7 +2004,7 @@ mmsConnectionFileReadHandler (uint32_t invokeId, void* parameter, MmsError mmsEr
             else {
                 /* send next read request */
 
-                call->invokeId = MmsConnection_fileReadAsync(self->connection, &mmsError, call->specificParameter2.getFileInfo.frsmId,
+                call->invokeId = MmsConnection_fileReadAsync(self->connection, &mmsError, frsmId,
                         mmsConnectionFileReadHandler, self);
 
                 if (mmsError != MMS_ERROR_NONE) {
@@ -1972,7 +2013,7 @@ mmsConnectionFileReadHandler (uint32_t invokeId, void* parameter, MmsError mmsEr
                     handler(invokeId, call->callbackParameter, err, invokeId, NULL, 0, false);
 
                     /* close file */
-                    MmsConnection_fileCloseAsync(self->connection, &mmsError, call->specificParameter2.getFileInfo.frsmId, mmsConnectionFileCloseHandler, self);
+                    call->invokeId = MmsConnection_fileCloseAsync(self->connection, &mmsError, frsmId, mmsConnectionFileCloseHandler, self);
 
                     if (mmsError != MMS_ERROR_NONE) {
                         iedConnection_releaseOutstandingCall(self, call);
@@ -2010,8 +2051,6 @@ mmsConnectionFileOpenHandler (uint32_t invokeId, void* parameter, MmsError mmsEr
             iedConnection_releaseOutstandingCall(self, call);
         }
         else {
-
-            call->specificParameter2.getFileInfo.frsmId = frsmId;
             call->specificParameter2.getFileInfo.originalInvokeId = invokeId;
             call->invokeId = MmsConnection_fileReadAsync(self->connection, &mmsError, frsmId, mmsConnectionFileReadHandler, self);
 
@@ -2021,7 +2060,7 @@ mmsConnectionFileOpenHandler (uint32_t invokeId, void* parameter, MmsError mmsEr
                 handler(invokeId, call->callbackParameter, err, invokeId, NULL, 0, false);
 
                 /* close file */
-                MmsConnection_fileCloseAsync(self->connection, &mmsError, frsmId, mmsConnectionFileCloseHandler, self);
+                call->invokeId = MmsConnection_fileCloseAsync(self->connection, &mmsError, frsmId, mmsConnectionFileCloseHandler, self);
 
                 if (mmsError != MMS_ERROR_NONE)
                     iedConnection_releaseOutstandingCall(self, call);
@@ -3214,7 +3253,7 @@ IedConnection_readDataSetValues(IedConnection self, IedClientError* error, const
         dataSetVal = MmsConnection_readNamedVariableListValuesAssociationSpecific(self->connection,
                 &mmsError, itemId, true);
     else
-        dataSetVal= MmsConnection_readNamedVariableListValues(self->connection, &mmsError,
+        dataSetVal = MmsConnection_readNamedVariableListValues(self->connection, &mmsError,
                     domainId, itemId, true);
 
     if (dataSetVal == NULL) {

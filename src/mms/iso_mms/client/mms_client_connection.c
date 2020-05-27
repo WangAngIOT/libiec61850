@@ -1,7 +1,7 @@
 /*
  *  mms_client_connection.c
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2019 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -240,10 +240,10 @@ getNextInvokeId(MmsConnection self)
 {
     uint32_t nextInvokeId;
 
-    Semaphore_wait(self->lastInvokeIdLock);
-    self->lastInvokeId++;
-    nextInvokeId = self->lastInvokeId;
-    Semaphore_post(self->lastInvokeIdLock);
+    Semaphore_wait(self->nextInvokeIdLock);
+    self->nextInvokeId++;
+    nextInvokeId = self->nextInvokeId;
+    Semaphore_post(self->nextInvokeIdLock);
 
     return nextInvokeId;
 }
@@ -270,7 +270,7 @@ checkForOutstandingCall(MmsConnection self, uint32_t invokeId)
 }
 
 static bool
-addToOutstandingCalls(MmsConnection self, uint32_t invokeId, eMmsOutstandingCallType type, void* userCallback, void* userParameter, void* internalParameter)
+addToOutstandingCalls(MmsConnection self, uint32_t invokeId, eMmsOutstandingCallType type, void* userCallback, void* userParameter, MmsClientInternalParameter internalParameter)
 {
     int i = 0;
 
@@ -314,6 +314,36 @@ removeFromOutstandingCalls(MmsConnection self, uint32_t invokeId)
     Semaphore_post(self->outstandingCallsLock);
 }
 
+MmsOutstandingCall
+mmsClient_getMatchingObtainFileRequest(MmsConnection self, const char* filename)
+{
+    int i = 0;
+
+    Semaphore_wait(self->outstandingCallsLock);
+
+    for (i = 0; i < OUTSTANDING_CALLS; i++) {
+        if (self->outstandingCalls[i].isUsed) {
+
+            if (self->outstandingCalls[i].type == MMS_CALL_TYPE_OBTAIN_FILE) {
+
+                char* storedFilename = (char*) self->outstandingCalls[i].internalParameter.ptr;
+
+                if (storedFilename) {
+
+                    if (!strcmp(filename, storedFilename)) {
+                        Semaphore_post(self->outstandingCallsLock);
+                        return &(self->outstandingCalls[i]);
+                    }
+                }
+            }
+        }
+    }
+
+    Semaphore_post(self->outstandingCallsLock);
+
+    return NULL;
+}
+
 static void
 sendMessage(MmsConnection self, ByteBuffer* message)
 {
@@ -333,7 +363,7 @@ sendMessage(MmsConnection self, ByteBuffer* message)
 
 static MmsError
 sendAsyncRequest(MmsConnection self, uint32_t invokeId, ByteBuffer* message, eMmsOutstandingCallType type,
-        void* userCallback, void* userParameter, void* internalParameter)
+        void* userCallback, void* userParameter, MmsClientInternalParameter internalParameter)
 {
     if (addToOutstandingCalls(self, invokeId, type, userCallback, userParameter, internalParameter) == false) {
 
@@ -533,9 +563,12 @@ parseServiceError(uint8_t* buffer, int bufPos, int maxLength, MmsServiceError* e
 }
 
 int
-mmsMsg_parseConfirmedErrorPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId, MmsServiceError* serviceError)
+mmsMsg_parseConfirmedErrorPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId, bool* hasInvokeId, MmsServiceError* serviceError)
 {
     int length;
+
+    if (hasInvokeId)
+        *hasInvokeId = false;
 
     uint8_t tag = buffer[bufPos++];
     if (tag != 0xa2)
@@ -546,9 +579,6 @@ mmsMsg_parseConfirmedErrorPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32
         goto exit_error;
 
     int endPos = bufPos + length;
-
-    if (endPos > maxBufPos)
-        goto exit_error;
 
     while (bufPos < endPos) {
         tag = buffer[bufPos++];
@@ -561,6 +591,8 @@ mmsMsg_parseConfirmedErrorPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32
         switch (tag)
         {
         case 0x80: /* invoke Id */
+            if (hasInvokeId)
+                *hasInvokeId = true;
             if (invokeId != NULL)
                 *invokeId = BerDecoder_decodeUint32(buffer, length, bufPos);
             bufPos += length;
@@ -589,9 +621,12 @@ exit_error:
 }
 
 int
-mmsMsg_parseRejectPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId, int* rejectType, int* rejectReason)
+mmsMsg_parseRejectPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invokeId, bool* hasInvokeId, int* rejectType, int* rejectReason)
 {
     int length;
+
+    if (hasInvokeId)
+        *hasInvokeId = false;
 
     uint8_t tag = buffer[bufPos++];
 
@@ -602,13 +637,7 @@ mmsMsg_parseRejectPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invo
     if (bufPos < 0)
         goto exit_error;
 
-    if (bufPos + length > maxBufPos)
-        goto exit_error;
-
     int endPos = bufPos + length;
-
-    if (endPos > maxBufPos)
-        goto exit_error;
 
     while (bufPos < endPos) {
         tag = buffer[bufPos++];
@@ -619,6 +648,8 @@ mmsMsg_parseRejectPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32_t* invo
             goto exit_error;
 
         if (tag == 0x80) { /* invoke id */
+            if (hasInvokeId)
+                *hasInvokeId = true;
             if (invokeId != NULL)
                 *invokeId = BerDecoder_decodeUint32(buffer, length, bufPos);
         }
@@ -657,7 +688,10 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
             if (response) {
                 MmsValue* value = mmsClient_parseReadResponse(response, NULL, false);
 
-                handler(outstandingCall->invokeId, outstandingCall->userParameter, MMS_ERROR_NONE, value);
+                if (value == NULL)
+                    err = MMS_ERROR_PARSING_RESPONSE;
+
+                handler(outstandingCall->invokeId, outstandingCall->userParameter, err, value);
             }
 
         }
@@ -673,7 +707,10 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
             if (response) {
                 MmsValue* value = mmsClient_parseReadResponse(response, NULL, true);
 
-                handler(outstandingCall->invokeId, outstandingCall->userParameter, MMS_ERROR_NONE, value);
+                if (value == NULL)
+                    err = MMS_ERROR_PARSING_RESPONSE;
+
+                handler(outstandingCall->invokeId, outstandingCall->userParameter, err, value);
             }
 
         }
@@ -726,7 +763,7 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
 
                 LinkedList accessSpec = mmsClient_parseGetNamedVariableListAttributesResponse(response, &deletable);
 
-                if (accessSpec == false)
+                if (accessSpec == NULL)
                     err = MMS_ERROR_PARSING_RESPONSE;
 
                 handler(outstandingCall->invokeId, outstandingCall->userParameter, err, accessSpec, deletable);
@@ -778,6 +815,9 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
         }
         else {
             MmsVariableSpecification* typeSpec = mmsClient_parseGetVariableAccessAttributesResponse(response, NULL);
+
+            if (typeSpec == NULL)
+                err = MMS_ERROR_PARSING_RESPONSE;
 
             handler(outstandingCall->invokeId, outstandingCall->userParameter, err, typeSpec);
         }
@@ -846,7 +886,7 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
             handler(outstandingCall->invokeId, outstandingCall->userParameter, err, NULL, false);
         }
         else {
-            LinkedList nameList = (LinkedList) outstandingCall->internalParameter;
+            LinkedList nameList = (LinkedList) outstandingCall->internalParameter.ptr;
 
             bool moreFollows = mmsClient_parseGetNameListResponse(&nameList, response);
 
@@ -871,7 +911,6 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
             uint32_t fileSize;
             uint64_t lastModified;
 
-
             if (mmsMsg_parseFileOpenResponse(ByteBuffer_getBuffer(response), bufPos, ByteBuffer_getSize(response),
                     &frsmId, &fileSize, &lastModified) == false)
             {
@@ -886,20 +925,18 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
         MmsConnection_FileReadHandler handler =
                 (MmsConnection_FileReadHandler) outstandingCall->userCallback;
 
+        int32_t frsmId = outstandingCall->internalParameter.i32;
+
         if (err != MMS_ERROR_NONE) {
-            handler(outstandingCall->invokeId, outstandingCall->userParameter, err, NULL, 0, false);
+            handler(outstandingCall->invokeId, outstandingCall->userParameter, err, frsmId, NULL, 0, false);
         }
         else {
             bool moreFollows;
-            uint8_t* dataBuffer;
-            int dataLength;
 
-            if (mmsMsg_parseFileReadResponse(ByteBuffer_getBuffer(response), bufPos, ByteBuffer_getSize(response), &moreFollows, &dataBuffer, &dataLength) == false)
+            if (mmsMsg_parseFileReadResponse(ByteBuffer_getBuffer(response), bufPos, ByteBuffer_getSize(response), outstandingCall->invokeId, frsmId, &moreFollows,
+                    handler, outstandingCall->userParameter) == false)
             {
-                handler(outstandingCall->invokeId, outstandingCall->userParameter, MMS_ERROR_PARSING_RESPONSE, NULL, 0, false);
-            }
-            else {
-                handler(outstandingCall->invokeId, outstandingCall->userParameter, err, dataBuffer, dataLength, moreFollows);
+                handler(outstandingCall->invokeId, outstandingCall->userParameter, MMS_ERROR_PARSING_RESPONSE, frsmId, NULL, 0, false);
             }
         }
     }
@@ -910,6 +947,11 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
     {
         MmsConnection_GenericServiceHandler handler =
                 (MmsConnection_GenericServiceHandler) outstandingCall->userCallback;
+
+        if (outstandingCall->type == MMS_CALL_TYPE_OBTAIN_FILE) {
+            if (outstandingCall->internalParameter.ptr)
+                GLOBAL_FREEMEM(outstandingCall->internalParameter.ptr);
+        }
 
         if (err != MMS_ERROR_NONE) {
             handler(outstandingCall->invokeId, outstandingCall->userParameter, err, false);
@@ -1074,9 +1116,11 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
             printf("MMS_CLIENT: Confirmed error PDU!\n");
 
         uint32_t invokeId;
+        bool hasInvokeId = false;
+
         MmsServiceError serviceError = { 0, 0 };
 
-        if (mmsMsg_parseConfirmedErrorPDU(payload->buffer, 0, payload->size, &invokeId, &serviceError) < 0) {
+        if (mmsMsg_parseConfirmedErrorPDU(payload->buffer, 0, payload->size, &invokeId, &hasInvokeId, &serviceError) < 0) {
             if (DEBUG_MMS_CLIENT)
                 printf("MMS_CLIENT: Error parsing confirmedErrorPDU!\n");
 
@@ -1084,26 +1128,35 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
         }
         else {
 
-            MmsOutstandingCall call = checkForOutstandingCall(self, invokeId);
+            if (hasInvokeId) {
+                MmsOutstandingCall call = checkForOutstandingCall(self, invokeId);
 
-            if (call) {
+                if (call) {
 
-                MmsError err = convertServiceErrorToMmsError(serviceError);
+                    MmsError err = convertServiceErrorToMmsError(serviceError);
 
-                if (call->type != MMS_CALL_TYPE_NONE) {
-                    handleAsyncResponse(self, NULL, 0, call, err);
+                    if (call->type != MMS_CALL_TYPE_NONE) {
+                        handleAsyncResponse(self, NULL, 0, call, err);
+                    }
+                    else {
+                        if (DEBUG_MMS_CLIENT)
+                            printf("MMS_CLIENT: internal problem (unexpected call type - error PDU)\n");
+                    }
                 }
                 else {
                     if (DEBUG_MMS_CLIENT)
-                        printf("MMS_CLIENT: internal problem (unexpected call type - error PDU)\n");
+                        printf("MMS_CLIENT: server sent unexpected confirmed error PDU!\n");
+
+                    return;
                 }
             }
             else {
                 if (DEBUG_MMS_CLIENT)
-                    printf("MMS_CLIENT: unexpected message from server!\n");
+                    printf("MMS_CLIENT: server sent confirmed error PDU without invoke ID!\n");
 
                 return;
             }
+
         }
     }
     else if (tag == 0xa4) { /* reject PDU */
@@ -1111,33 +1164,40 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
         if (DEBUG_MMS_CLIENT)
             printf("MMS_CLIENT: reject PDU!\n");
 
-        uint32_t invokeId;
+        bool hasInvokeId = false;
+        uint32_t invokeId = 0;
         int rejectType;
         int rejectReason;
 
-        if (mmsMsg_parseRejectPDU(payload->buffer, 0, payload->size, &invokeId, &rejectType, &rejectReason) >= 0) {
+        if (mmsMsg_parseRejectPDU(payload->buffer, 0, payload->size, &invokeId, &hasInvokeId, &rejectType, &rejectReason) >= 0) {
 
             if (DEBUG_MMS_CLIENT)
-                printf("MMS_CLIENT: reject PDU invokeID: %i type: %i reason: %i\n", (int) invokeId, rejectType, rejectReason);
+                printf("MMS_CLIENT: reject PDU invokeID: %u type: %i reason: %i\n", invokeId, rejectType, rejectReason);
 
-            MmsOutstandingCall call = checkForOutstandingCall(self, invokeId);
+            if (hasInvokeId) {
+                MmsOutstandingCall call = checkForOutstandingCall(self, invokeId);
 
-            if (call) {
+                if (call) {
 
-                MmsError err = convertRejectCodesToMmsError(rejectType, rejectReason);
+                    MmsError err = convertRejectCodesToMmsError(rejectType, rejectReason);
 
-                if (call->type != MMS_CALL_TYPE_NONE) {
-                    handleAsyncResponse(self, NULL, 0, call, err);
+                    if (call->type != MMS_CALL_TYPE_NONE) {
+                        handleAsyncResponse(self, NULL, 0, call, err);
+                    }
+                    else {
+
+                        if (DEBUG_MMS_CLIENT)
+                            printf("MMS_CLIENT: internal problem (unexpected call type - reject PDU)\n");
+                    }
                 }
                 else {
-
-                    if (DEBUG_MMS_CLIENT)
-                        printf("MMS_CLIENT: internal problem (unexpected call type - reject PDU)\n");
+                    return;
                 }
             }
             else {
                 return;
             }
+
         }
         else
             goto exit_with_error;
@@ -1148,14 +1208,14 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
         int bufPos = 1;
 
         bufPos = BerDecoder_decodeLength(buf, &length, bufPos, payload->size);
-        if (bufPos == -1)
+        if (bufPos < 0)
             goto exit_with_error;
 
         if (buf[bufPos++] == 0x02) {
             int invokeIdLength;
 
             bufPos = BerDecoder_decodeLength(buf, &invokeIdLength, bufPos, payload->size);
-            if (bufPos == -1)
+            if (bufPos < 0)
                 goto exit_with_error;
 
             uint32_t invokeId =
@@ -1201,10 +1261,11 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
         int length;
 
         bufPos = BerDecoder_decodeLength(buf, &length, bufPos, payload->size);
-        if (bufPos == -1)
+        if (bufPos < 0)
             goto exit_with_error;
 
-        uint32_t invokeId;
+        bool hasInvokeId = false;
+        uint32_t invokeId = 0;
 
         while (bufPos < payload->size) {
 
@@ -1218,10 +1279,18 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
             }
 
             bufPos = BerDecoder_decodeLength(buf, &length, bufPos, payload->size);
-            if (bufPos == -1)
+            if (bufPos < 0)
                 goto exit_with_error;
 
             if (extendedTag) {
+
+                if (hasInvokeId == false) {
+                    if (DEBUG_MMS_CLIENT)
+                        printf("MMS_CLIENT: invalid message received - missing invoke ID!\n");
+
+                    goto exit_with_error;
+                }
+
                 switch (nestedTag)
                 {
 
@@ -1282,7 +1351,7 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
                     if (DEBUG_MMS_CLIENT)
                         printf("MMS_CLIENT: received request with invokeId: %i\n", invokeId);
 
-                    self->lastInvokeId = invokeId;
+                    hasInvokeId = true;
 
                     break;
 
@@ -1322,6 +1391,7 @@ exit_with_error:
     return;
 }
 
+#if (CONFIG_MMS_THREADLESS_STACK == 0)
 static void*
 connectionHandlingThread(void* parameter)
 {
@@ -1329,12 +1399,12 @@ connectionHandlingThread(void* parameter)
 
     while (self->connectionThreadRunning) {
         if (MmsConnection_tick(self))
-            Thread_sleep(10);
+            Thread_sleep(1);
     }
 
     return NULL;
 }
-
+#endif /* (CONFIG_MMS_THREADLESS_STACK == 0) */
 
 static MmsConnection
 MmsConnection_createInternal(TLSConfiguration tlsConfig, bool createThread)
@@ -1357,7 +1427,7 @@ MmsConnection_createInternal(TLSConfiguration tlsConfig, bool createThread)
 
         self->requestTimeout = CONFIG_MMS_CONNECTION_DEFAULT_TIMEOUT;
 
-        self->lastInvokeIdLock = Semaphore_create(1);
+        self->nextInvokeIdLock = Semaphore_create(1);
         self->outstandingCallsLock = Semaphore_create(1);
 
         self->associationStateLock = Semaphore_create(1);
@@ -1374,10 +1444,11 @@ MmsConnection_createInternal(TLSConfiguration tlsConfig, bool createThread)
         /* Load default values for connection parameters */
         TSelector tSelector = { 2, { 0, 1 } };
         SSelector sSelector = { 2, { 0, 1 } };
+        PSelector pSelector = { 4, { 0, 0, 0, 1 } };
 
-        IsoConnectionParameters_setLocalAddresses(self->isoParameters, 1, sSelector, tSelector);
+        IsoConnectionParameters_setLocalAddresses(self->isoParameters, pSelector, sSelector, tSelector);
         IsoConnectionParameters_setLocalApTitle(self->isoParameters, "1.1.1.999", 12);
-        IsoConnectionParameters_setRemoteAddresses(self->isoParameters, 1, sSelector, tSelector);
+        IsoConnectionParameters_setRemoteAddresses(self->isoParameters, pSelector, sSelector, tSelector);
         IsoConnectionParameters_setRemoteApTitle(self->isoParameters, "1.1.1.999.1", 12);
 
         self->connectTimeout = CONFIG_MMS_CONNECTION_DEFAULT_CONNECT_TIMEOUT;
@@ -1386,8 +1457,6 @@ MmsConnection_createInternal(TLSConfiguration tlsConfig, bool createThread)
 
 #if (CONFIG_MMS_SUPPORT_TLS == 1)
         if (tlsConfig) {
-            TLSConfiguration_setClientMode(tlsConfig);
-
             IsoConnectionParameters_setTlsConfiguration(self->isoParameters, tlsConfig);
         }
 #endif /* (CONFIG_MMS_SUPPORT_TLS == 1) */
@@ -1441,7 +1510,7 @@ MmsConnection_destroy(MmsConnection self)
     if (self->isoParameters != NULL)
         IsoConnectionParameters_destroy(self->isoParameters);
 
-    Semaphore_destroy(self->lastInvokeIdLock);
+    Semaphore_destroy(self->nextInvokeIdLock);
 
     Semaphore_destroy(self->outstandingCallsLock);
 
@@ -1520,6 +1589,12 @@ void
 MmsConnection_setRequestTimeout(MmsConnection self, uint32_t timeoutInMs)
 {
     self->requestTimeout = timeoutInMs;
+}
+
+uint32_t
+MmsConnection_getRequestTimeout(MmsConnection self)
+{
+    return self->requestTimeout;
 }
 
 void
@@ -1667,12 +1742,13 @@ MmsConnection_connectAsync(MmsConnection self, MmsError* mmsError, const char* s
     }
 #endif /* (CONFIG_MMS_RAW_MESSAGE_LOGGING == 1) */
 
-    if (IsoClientConnection_associateAsync(self->isoClient, self->connectTimeout)) {
+    if (IsoClientConnection_associateAsync(self->isoClient, self->connectTimeout, self->requestTimeout)) {
         setConnectionState(self, MMS_CONNECTION_STATE_CONNECTING);
         *mmsError = MMS_ERROR_NONE;
     }
-    else
+    else {
         *mmsError = MMS_ERROR_OTHER;
+    }
 }
 
 bool
@@ -1853,7 +1929,10 @@ mmsClient_getNameListSingleRequestAsync(
                     payload, objectClass, continueAfter);
     }
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_GET_NAME_LIST, handler, parameter, nameList);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = nameList;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_GET_NAME_LIST, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -1940,6 +2019,13 @@ mmsClient_getNameList(MmsConnection self, MmsError *mmsError,
 
     if (mmsError)
         *mmsError = err;
+
+    if (err != MMS_ERROR_NONE) {
+        if (list) {
+            LinkedList_destroy(list);
+            list = NULL;
+        }
+    }
 
     return list;
 }
@@ -2067,7 +2153,10 @@ MmsConnection_readVariableAsync(MmsConnection self, MmsError* mmsError, const ch
 
     mmsClient_createReadRequest(invokeId, domainId, itemId, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_VARIABLE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_VARIABLE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2092,6 +2181,70 @@ MmsConnection_readVariable(MmsConnection self, MmsError* mmsError,
     Semaphore_wait(parameter.sem);
 
     MmsConnection_readVariableAsync(self, &err, domainId, itemId, readVariableHandler, &parameter);
+
+    if (err == MMS_ERROR_NONE) {
+        Semaphore_wait(parameter.sem);
+
+        value = parameter.value;
+        err = parameter.err;
+    }
+
+    Semaphore_destroy(parameter.sem);
+
+    if (mmsError)
+        *mmsError = err;
+
+    return value;
+}
+
+uint32_t
+MmsConnection_readVariableComponentAsync(MmsConnection self, MmsError* mmsError,
+        const char* domainId, const char* itemId, const char* componentId,
+        MmsConnection_ReadVariableHandler handler, void* parameter)
+{
+    uint32_t invokeId = 0;
+
+    if (getConnectionState(self) != MMS_CONNECTION_STATE_CONNECTED) {
+        if (mmsError)
+            *mmsError = MMS_ERROR_CONNECTION_LOST;
+
+        goto exit_function;
+    }
+
+    ByteBuffer* payload = IsoClientConnection_allocateTransmitBuffer(self->isoClient);
+
+    invokeId = getNextInvokeId(self);
+
+    mmsClient_createReadRequestComponent(invokeId, domainId, itemId, componentId, payload);
+
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_VARIABLE, handler, parameter, intParam);
+
+    if (mmsError)
+        *mmsError = err;
+
+exit_function:
+    return invokeId;
+}
+
+MmsValue*
+MmsConnection_readVariableComponent(MmsConnection self, MmsError* mmsError,
+        const char* domainId, const char* itemId, const char* componentId)
+{
+    MmsValue* value = NULL;
+    MmsError err = MMS_ERROR_NONE;
+
+    struct readNVParameters parameter;
+
+    parameter.sem = Semaphore_create(1);;
+    parameter.value = NULL;
+    parameter.err = MMS_ERROR_NONE;
+
+    Semaphore_wait(parameter.sem);
+
+    MmsConnection_readVariableComponentAsync(self, &err, domainId, itemId, componentId, readVariableHandler, &parameter);
 
     if (err == MMS_ERROR_NONE) {
         Semaphore_wait(parameter.sem);
@@ -2162,7 +2315,10 @@ MmsConnection_readArrayElementsAsync(MmsConnection self, MmsError* mmsError, con
     mmsClient_createReadRequestAlternateAccessIndex(invokeId, domainId, itemId, startIndex,
             numberOfElements, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_VARIABLE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_VARIABLE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2225,7 +2381,10 @@ MmsConnection_readSingleArrayElementWithComponentAsync(MmsConnection self, MmsEr
     mmsClient_createReadRequestAlternateAccessSingleIndexComponent(invokeId, domainId, itemId, index, componentId,
             payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_VARIABLE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_VARIABLE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2286,7 +2445,10 @@ MmsConnection_readMultipleVariablesAsync(MmsConnection self, MmsError* mmsError,
 
     mmsClient_createReadRequestMultipleValues(invokeId, domainId, items, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_MULTIPLE_VARIABLES, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_MULTIPLE_VARIABLES, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2349,7 +2511,10 @@ MmsConnection_readNamedVariableListValuesAsync(MmsConnection self, MmsError* mms
     mmsClient_createReadNamedVariableListRequest(invokeId, domainId, listName,
             payload, specWithResult);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_MULTIPLE_VARIABLES, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_MULTIPLE_VARIABLES, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2413,7 +2578,10 @@ MmsConnection_readNamedVariableListValuesAssociationSpecificAsync(MmsConnection 
     mmsClient_createReadAssociationSpecificNamedVariableListRequest(invokeId, listName,
             payload, specWithResult);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_MULTIPLE_VARIABLES, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_MULTIPLE_VARIABLES, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2499,7 +2667,10 @@ MmsConnection_readNamedVariableListDirectoryAsync(MmsConnection self, MmsError* 
     mmsClient_createGetNamedVariableListAttributesRequest(invokeId, payload, domainId,
             listName);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_NVL_DIRECTORY, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_NVL_DIRECTORY, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2564,7 +2735,10 @@ MmsConnection_readNamedVariableListDirectoryAssociationSpecificAsync(MmsConnecti
     mmsClient_createGetNamedVariableListAttributesRequestAssociationSpecific(invokeId, payload,
             listName);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_NVL_DIRECTORY, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_NVL_DIRECTORY, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2639,7 +2813,10 @@ MmsConnection_defineNamedVariableListAsync(MmsConnection self, MmsError* mmsErro
     mmsClient_createDefineNamedVariableListRequest(invokeId, payload, domainId,
             listName, variableSpecs, false);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_DEFINE_NVL, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_DEFINE_NVL, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2694,7 +2871,10 @@ MmsConnection_defineNamedVariableListAssociationSpecificAsync(MmsConnection self
     mmsClient_createDefineNamedVariableListRequest(invokeId, payload, NULL,
             listName, variableSpecs, true);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_DEFINE_NVL, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_DEFINE_NVL, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2751,7 +2931,10 @@ MmsConnection_deleteNamedVariableListAsync(MmsConnection self, MmsError* mmsErro
 
     mmsClient_createDeleteNamedVariableListRequest(invokeId, payload, domainId, listName);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_DELETE_NVL, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_DELETE_NVL, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2809,7 +2992,10 @@ MmsConnection_deleteAssociationSpecificNamedVariableListAsync(MmsConnection self
     mmsClient_createDeleteAssociationSpecificNamedVariableListRequest(
             invokeId, payload, listName);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_DELETE_NVL, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_DELETE_NVL, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2886,7 +3072,10 @@ MmsConnection_getVariableAccessAttributesAsync(MmsConnection self, MmsError* mms
 
     mmsClient_createGetVariableAccessAttributesRequest(invokeId, domainId, itemId, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_GET_VAR_ACCESS_ATTR, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_GET_VAR_ACCESS_ATTR, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -2968,7 +3157,10 @@ MmsConnection_identifyAsync(MmsConnection self, MmsError* mmsError,
 
     mmsClient_createIdentifyRequest(invokeId, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_IDENTIFY, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_IDENTIFY, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3051,7 +3243,10 @@ MmsConnection_getServerStatusAsync(MmsConnection self, MmsError* mmsError, bool 
 
     mmsClient_createStatusRequest(invokeId, payload, extendedDerivation);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_GET_SERVER_STATUS, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_GET_SERVER_STATUS, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3183,7 +3378,8 @@ MmsConnection_readJournalTimeRangeAsync(MmsConnection self, MmsError* mmsError, 
     if ((MmsValue_getType(startTime) != MMS_BINARY_TIME) ||
             (MmsValue_getType(endTime) != MMS_BINARY_TIME)) {
 
-        *mmsError = MMS_ERROR_INVALID_ARGUMENTS;
+        if (mmsError)
+            *mmsError = MMS_ERROR_INVALID_ARGUMENTS;
         goto exit_function;
     }
 
@@ -3193,7 +3389,10 @@ MmsConnection_readJournalTimeRangeAsync(MmsConnection self, MmsError* mmsError, 
 
     mmsClient_createReadJournalRequestWithTimeRange(invokeId, payload, domainId, itemId, startTime, endTime);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_JOURNAL, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_JOURNAL, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3251,7 +3450,8 @@ MmsConnection_readJournalStartAfterAsync(MmsConnection self, MmsError* mmsError,
     if ((MmsValue_getType(timeSpecification) != MMS_BINARY_TIME) ||
             (MmsValue_getType(entrySpecification) != MMS_OCTET_STRING)) {
 
-        *mmsError = MMS_ERROR_INVALID_ARGUMENTS;
+        if (mmsError)
+            *mmsError = MMS_ERROR_INVALID_ARGUMENTS;
         goto exit_function;
     }
 
@@ -3261,7 +3461,10 @@ MmsConnection_readJournalStartAfterAsync(MmsConnection self, MmsError* mmsError,
 
     mmsClient_createReadJournalRequestStartAfter(invokeId, payload, domainId, itemId, timeSpecification, entrySpecification);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_JOURNAL, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_JOURNAL, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3360,7 +3563,10 @@ MmsConnection_fileOpenAsync(MmsConnection self, MmsError* mmsError, const char* 
 
     mmsClient_createFileOpenRequest(invokeId, payload, filename, initialPosition);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_OPEN, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_OPEN, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3449,7 +3655,10 @@ MmsConnection_fileCloseAsync(MmsConnection self, MmsError* mmsError, uint32_t fr
 
     mmsClient_createFileCloseRequest(invokeId, payload, frsmId);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_CLOSE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_CLOSE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3520,7 +3729,10 @@ MmsConnection_fileDeleteAsync(MmsConnection self, MmsError* mmsError, const char
 
     mmsClient_createFileDeleteRequest(invokeId, payload, fileName);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_DELETE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_DELETE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3540,14 +3752,13 @@ struct fileReadParameters
 {
     Semaphore waitForResponse;
     MmsError err;
-    int32_t frsmId;
     MmsFileReadHandler handler;
     void* handlerParameter;
     bool moreFollows;
 };
 
 static void
-fileReadHandler(uint32_t invokeId, void* parameter, MmsError mmsError, uint8_t* buffer, uint32_t byteReceived,
+fileReadHandler(uint32_t invokeId, void* parameter, MmsError mmsError, int frsmId, uint8_t* buffer, uint32_t byteReceived,
         bool moreFollows)
 {
     struct fileReadParameters* parameters = (struct fileReadParameters*) parameter;
@@ -3555,7 +3766,7 @@ fileReadHandler(uint32_t invokeId, void* parameter, MmsError mmsError, uint8_t* 
     parameters->err = mmsError;
 
     if (mmsError == MMS_ERROR_NONE)
-        parameters->handler(parameters->handlerParameter, parameters->frsmId, buffer, byteReceived);
+        parameters->handler(parameters->handlerParameter, frsmId, buffer, byteReceived);
 
     parameters->moreFollows = moreFollows;
 
@@ -3575,7 +3786,6 @@ MmsConnection_fileRead(MmsConnection self, MmsError* mmsError, int32_t frsmId, M
 
     parameter.waitForResponse = Semaphore_create(1);
     parameter.err = MMS_ERROR_NONE;
-    parameter.frsmId = frsmId;
     parameter.handler = handler;
     parameter.handlerParameter = handlerParameter;
     parameter.moreFollows = false;
@@ -3624,7 +3834,10 @@ MmsConnection_fileReadAsync(MmsConnection self, MmsError* mmsError, int32_t frsm
 
     mmsClient_createFileReadRequest(invokeId, payload, frsmId);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_READ, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.i32 = frsmId;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_READ, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3728,7 +3941,10 @@ MmsConnection_getFileDirectoryAsync(MmsConnection self, MmsError* mmsError, cons
 
     mmsClient_createFileDirectoryRequest(invokeId, payload, fileSpecification, continueAfter);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_GET_FILE_DIR, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_GET_FILE_DIR, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3798,7 +4014,10 @@ MmsConnection_fileRenameAsync(MmsConnection self, MmsError* mmsError, const char
 
     mmsClient_createFileRenameRequest(invokeId, payload, currentFileName, newFileName);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_RENAME, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_FILE_RENAME, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3876,7 +4095,14 @@ MmsConnection_obtainFileAsync(MmsConnection self, MmsError* mmsError, const char
 
     mmsClient_createObtainFileRequest(invokeId, payload, sourceFile, destinationFile);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_OBTAIN_FILE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+
+    if (sourceFile)
+        intParam.ptr = StringUtils_copyString(sourceFile);
+    else
+        intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_OBTAIN_FILE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -3954,7 +4180,10 @@ MmsConnection_writeVariableAsync(MmsConnection self, MmsError* mmsError,
 
     mmsClient_createWriteRequest(invokeId, domainId, itemId, value, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_VARIABLE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_VARIABLE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -4015,7 +4244,10 @@ MmsConnection_writeSingleArrayElementWithComponentAsync(MmsConnection self, MmsE
     mmsClient_createWriteRequestAlternateAccessSingleIndexComponent(invokeId, domainId, itemId, arrayIndex,
             componentId, value, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_VARIABLE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_VARIABLE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -4100,12 +4332,20 @@ MmsConnection_writeMultipleVariablesAsync(MmsConnection self, MmsError* mmsError
 
     invokeId = getNextInvokeId(self);
 
-    mmsClient_createWriteMultipleItemsRequest(invokeId, domainId, items, values, payload);
+    if (mmsClient_createWriteMultipleItemsRequest(invokeId, domainId, items, values, payload) != -1) {
+        MmsClientInternalParameter intParam;
+        intParam.ptr = NULL;
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_MULTIPLE_VARIABLES, handler, parameter, NULL);
+        MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_MULTIPLE_VARIABLES, handler, parameter, intParam);
 
-    if (mmsError)
-        *mmsError = err;
+        if (mmsError)
+            *mmsError = err;
+    }
+    else {
+        *mmsError = MMS_ERROR_RESOURCE_OTHER;
+        return 0;
+    }
+
 
 exit_function:
     return invokeId;
@@ -4163,7 +4403,10 @@ MmsConnection_writeArrayElementsAsync(MmsConnection self, MmsError* mmsError,
 
     mmsClient_createWriteRequestArray(invokeId, domainId, itemId, index, numberOfElements, value, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_VARIABLE, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_VARIABLE, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;
@@ -4230,7 +4473,10 @@ MmsConnection_writeNamedVariableListAsync(MmsConnection self, MmsError* mmsError
 
     mmsClient_createWriteRequestNamedVariableList(invokeId, isAssociationSpecific, domainId, itemId, values, payload);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_MULTIPLE_VARIABLES, handler, parameter, NULL);
+    MmsClientInternalParameter intParam;
+    intParam.ptr = NULL;
+
+    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_WRITE_MULTIPLE_VARIABLES, handler, parameter, intParam);
 
     if (mmsError)
         *mmsError = err;

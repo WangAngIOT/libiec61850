@@ -131,7 +131,11 @@ namespace IEC61850
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern void ClientReportControlBlock_setPurgeBuf (IntPtr self, [MarshalAs(UnmanagedType.I1)] bool purgeBuf);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.I1)]
+            static extern bool ClientReportControlBlock_hasResvTms(IntPtr self);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern Int16 ClientReportControlBlock_getResvTms (IntPtr self);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
@@ -403,10 +407,12 @@ namespace IEC61850
             {
                 UInt32 parametersMask = CreateParametersMask();
 
+                bool flagRptId = this.flagRptId;
+
                 int error;
 
 				iedConnection.SetRCBValues (out error, self, parametersMask, singleRequest);
-
+                               
 				resetSendFlags();
 
                 if (error != 0)
@@ -746,32 +752,41 @@ namespace IEC61850
 				flagOptFlds = true;
 			}
 
-			/// <summary>
-			/// Gets the ResvTms (reservation time) value
-			/// </summary>
-			/// <remarks>
-			/// Only for BRCB.
-			/// Value of -1 indicate the BRCB is exclusively reserved for a set of client based upon configuration.
-			/// Value of 0 means that the BRCB is not reserved.
-			/// Positive value indicates that the BRCB is reserved dynamically and the value is the number of
-			/// seconds for reservation after association loss.
-			/// </remarks>
-			/// <returns>The reservation time</returns>
-			public Int16 GetResvTms()
-			{
-				return ClientReportControlBlock_getResvTms (self);
-			}
+            /// <summary>
+            /// Check if the report control block has the "ResvTms" attribute.
+            /// </summary>
+            /// <returns><c>true</c>, if ResvTms is available, <c>false</c> otherwise.</returns>
+            public bool HasResvTms()
+            {
+                return ClientReportControlBlock_hasResvTms(self);
+            }
 
-			/// <summary>
-			/// Sets the ResvTms (reservation time) value
-			/// </summary>
-			/// <param name="resvTms">the reservation time value</param>
-			public void SetResvTms(Int16 resvTms)
-			{
-				ClientReportControlBlock_setResvTms (self, resvTms);
+            /// <summary>
+            /// Gets the ResvTms (reservation time) value
+            /// </summary>
+            /// <remarks>
+            /// Only for BRCB.
+            /// Value of -1 indicate the BRCB is exclusively reserved for a set of client based upon configuration.
+            /// Value of 0 means that the BRCB is not reserved.
+            /// Positive value indicates that the BRCB is reserved dynamically and the value is the number of
+            /// seconds for reservation after association loss.
+            /// </remarks>
+            /// <returns>The reservation time</returns>
+            public Int16 GetResvTms()
+            {
+                return ClientReportControlBlock_getResvTms(self);
+            }
 
-				flagResvTms = true;
-			}
+            /// <summary>
+            /// Sets the ResvTms (reservation time) value
+            /// </summary>
+            /// <param name="resvTms">the reservation time value</param>
+            public void SetResvTms(Int16 resvTms)
+            {
+                ClientReportControlBlock_setResvTms(self, resvTms);
+
+                flagResvTms = true;
+            }
 
             /// <summary>
             /// Gets the current owner of the RCB

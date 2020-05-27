@@ -28,7 +28,7 @@ sigint_handler(int signalId)
 }
 
 static ControlHandlerResult
-controlHandlerForBinaryOutput(void* parameter, MmsValue* value, bool test)
+controlHandlerForBinaryOutput(ControlAction action, void* parameter, MmsValue* value, bool test)
 {
     if (test)
         return CONTROL_RESULT_FAILED;
@@ -99,7 +99,7 @@ main(int argc, char** argv)
     /* disable MMS file service */
     IedServerConfig_enableFileService(config, false);
 
-    /* disable dynamic data set service */
+    /* enable dynamic data set service */
     IedServerConfig_enableDynamicDataSetService(config, true);
 
     /* disable log service */
@@ -113,6 +113,9 @@ main(int argc, char** argv)
 
     /* configuration object is no longer required */
     IedServerConfig_destroy(config);
+
+    /* set the identity values for MMS identify service */
+    IedServer_setServerIdentity(iedServer, "MZ", "basic io", "1.4.2");
 
     /* Install handler for operate command */
     IedServer_setControlHandler(iedServer, IEDMODEL_GenericIO_GGIO1_SPCSO1,

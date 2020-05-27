@@ -1,7 +1,7 @@
 /*
  *  iso_server.c
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2020 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -66,6 +66,8 @@ struct sIsoServer {
     Thread serverThread;
 #endif
 
+    HandleSet handleset;
+
     Socket serverSocket;
     int tcpPort;
     const char* localIpAddress;
@@ -83,6 +85,7 @@ struct sIsoServer {
 #endif /* (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1) */
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
+    /* used to control access to server data model */
     Semaphore userLock;
 #endif
 
@@ -146,7 +149,7 @@ addClientConnection(IsoServer self, IsoConnection connection)
 
     self->connectionCounter++;
     if (DEBUG_ISO_SERVER)
-        printf("IsoServer: increase connection counter to %i!\n", self->connectionCounter);
+        printf("ISO_SERVER: increase connection counter to %i!\n", self->connectionCounter);
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
     lockClientConnections(self);
@@ -182,19 +185,13 @@ addClientConnection(IsoServer self, IsoConnection connection)
 static void
 removeClientConnection(IsoServer self, IsoConnection connection)
 {
-
-#if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
-    lockClientConnections(self);
-#endif
-
 #if (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1)
-
-
-#if (CONFIG_MMS_SINGLE_THREADED == 0)
 
     LinkedList_remove(self->openClientConnections, connection);
 
-#endif /* (CONFIG_MMS_SINGLE_THREADED == 0) */
+#if (CONFIG_MMS_SINGLE_THREADED == 1)
+    IsoConnection_removeFromHandleSet(connection, self->handleset);
+#endif
 
 
 #else
@@ -204,6 +201,10 @@ removeClientConnection(IsoServer self, IsoConnection connection)
     for (i = 0; i < CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS; i++) {
         if (self->openClientConnections[i] == connection) {
 
+#if (CONFIG_MMS_SINGLE_THREADED == 1)
+            IsoConnection_removeFromHandleSet(connection, self->handleset);
+#endif
+
             if (DEBUG_ISO_SERVER)
                 printf("ISO_SERVER: removed connection (%p) index:%i\n", connection, i);
 
@@ -212,10 +213,73 @@ removeClientConnection(IsoServer self, IsoConnection connection)
         }
     }
 #endif /* (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1) */
+}
+
+static void
+removeTerminatedConnections(IsoServer self, bool isSingleThread)
+{
+#if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
+    lockClientConnections(self);
+#endif
+
+#if (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1)
+
+    LinkedList openConnection = LinkedList_getNext(self->openClientConnections);
+
+    while (openConnection) {
+        IsoConnection isoConnection = (IsoConnection) openConnection->data;
+
+        if (isSingleThread) {
+            if (IsoConnection_getState(isoConnection) == ISO_CON_STATE_STOPPED) {
+
+                self->connectionHandler(ISO_CONNECTION_CLOSED, self->connectionHandlerParameter,
+                        isoConnection);
+
+                IsoConnection_close(isoConnection);
+            }
+        }
+
+        if (IsoConnection_getState(isoConnection) == ISO_CON_STATE_TERMINATED) {
+            removeClientConnection(self, isoConnection);
+            IsoConnection_destroy(isoConnection);
+            openConnection = LinkedList_getNext(self->openClientConnections);
+        }
+        else
+            openConnection = LinkedList_getNext(openConnection);
+    }
+
+#else
+    int i;
+
+    for (i = 0; i < CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS; i++) {
+        if (self->openClientConnections[i] != NULL) {
+
+            IsoConnection isoConnection = self->openClientConnections[i];
+
+            if (isSingleThread) {
+                if (IsoConnection_getState(isoConnection) == ISO_CON_STATE_STOPPED) {
+
+                    self->connectionHandler(ISO_CONNECTION_CLOSED, self->connectionHandlerParameter,
+                            isoConnection);
+
+                    IsoConnection_close(isoConnection);
+
+                    IsoConnection_removeFromHandleSet(isoConnection, self->handleset);
+                }
+            }
+
+            if (IsoConnection_getState(isoConnection) == ISO_CON_STATE_TERMINATED) {
+                removeClientConnection(self, isoConnection);
+                IsoConnection_destroy(isoConnection);
+            }
+        }
+    }
+#endif /* (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1) */
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
     unlockClientConnections(self);
 #endif
+
 }
 
 static void
@@ -233,11 +297,7 @@ closeAllOpenClientConnections(IsoServer self)
         IsoConnection isoConnection = (IsoConnection) openConnection->data;
 
         IsoConnection_close(isoConnection);
-
-#if (CONFIG_MMS_SINGLE_THREADED == 1)
-            /* if CONFIG_MMS_SINGLE_THREADED == 0 connection instance will be destroyed by connection thread. */
         IsoConnection_destroy(isoConnection);
-#endif
 
         openConnection = LinkedList_getNext(openConnection);
     }
@@ -252,14 +312,44 @@ closeAllOpenClientConnections(IsoServer self)
 
     for (i = 0; i < CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS; i++) {
         if (self->openClientConnections[i] != NULL) {
-
             IsoConnection_close(self->openClientConnections[i]);
-
-#if (CONFIG_MMS_SINGLE_THREADED == 1)
-            /* if CONFIG_MMS_SINGLE_THREADED == 0 connection instance will be destroyed by connection thread. */
             IsoConnection_destroy(self->openClientConnections[i]);
+        }
+    }
+#endif /* (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1) */
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
+    unlockClientConnections(self);
 #endif
 
+}
+
+static void
+callTickHandlerForClientConnections(IsoServer self)
+{
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
+    lockClientConnections(self);
+#endif
+
+#if (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1)
+
+    LinkedList openConnection = LinkedList_getNext(self->openClientConnections);
+
+    while (openConnection != NULL) {
+        IsoConnection isoConnection = (IsoConnection) openConnection->data;
+
+        IsoConnection_callTickHandler(isoConnection);
+
+        openConnection = LinkedList_getNext(openConnection);
+    }
+
+#else
+    int i;
+
+    for (i = 0; i < CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS; i++) {
+        if (self->openClientConnections[i] != NULL) {
+            IsoConnection_callTickHandler(self->openClientConnections[i]);
         }
     }
 #endif /* (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1) */
@@ -280,20 +370,12 @@ handleClientConnections(IsoServer self)
 #endif
 
     LinkedList openConnection = LinkedList_getNext(self->openClientConnections);
-    LinkedList lastConnection = self->openClientConnections;
 
     while (openConnection != NULL) {
         IsoConnection isoConnection = (IsoConnection) openConnection->data;
 
         if (IsoConnection_isRunning(isoConnection))
-            IsoConnection_handleTcpConnection(isoConnection);
-        else {
-            IsoConnection_destroy(isoConnection);
-
-            lastConnection->next = openConnection->next;
-
-            GLOBAL_FREEMEM(openConnection);
-        }
+            IsoConnection_handleTcpConnection(isoConnection, true);
 
         openConnection = LinkedList_getNext(openConnection);
     }
@@ -301,6 +383,8 @@ handleClientConnections(IsoServer self)
 #if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
     unlockClientConnections(self);
 #endif
+
+    removeTerminatedConnections(self, true);
 
 #else
 
@@ -314,7 +398,7 @@ handleClientConnections(IsoServer self)
         if (self->openClientConnections[i] != NULL) {
             if (IsoConnection_isRunning(self->openClientConnections[i])) {
 
-                IsoConnection_handleTcpConnection(self->openClientConnections[i]);
+                IsoConnection_handleTcpConnection(self->openClientConnections[i], true);
             }
             else {
                 IsoConnection_destroy(self->openClientConnections[i]);
@@ -328,6 +412,8 @@ handleClientConnections(IsoServer self)
 #if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
     unlockClientConnections(self);
 #endif
+
+    removeTerminatedConnections(self, true);
 
 #endif /* (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1) */
 }
@@ -345,6 +431,9 @@ setupIsoServer(IsoServer self)
 
         goto exit_function;
     }
+
+    self->handleset = Handleset_new();
+    Handleset_addSocket(self->handleset, self->serverSocket);
 
 #if (CONFIG_ACTIVATE_TCP_KEEPALIVE == 1)
     Socket_activateTcpKeepAlive(self->serverSocket,
@@ -364,11 +453,24 @@ exit_function:
 }
 
 
-#if (CONFIG_MMS_THREADLESS_STACK == 0)
-/* used by single and multi-threaded versions */
+/** used by single and multi-threaded versions
+ *
+ * \param isSingleThread when true server is running in single thread or non-thread mode
+ */
 static void
-handleIsoConnections(IsoServer self)
+handleIsoConnections(IsoServer self, bool isSingleThread)
 {
+    if (isSingleThread) {
+        /*
+         * NOTE: when running in multi thread mode the tick handler is called
+         * by the connection thread.
+         */
+        callTickHandlerForClientConnections(self);
+    }
+
+    if (Handleset_waitReady(self->handleset, 1) < 1)
+        return;
+
     Socket connectionSocket;
 
     if ((connectionSocket = ServerSocket_accept((ServerSocket) self->serverSocket)) != NULL) {
@@ -393,83 +495,37 @@ handleIsoConnections(IsoServer self)
 
             Socket_destroy(connectionSocket);
 
-#if (CONFIG_MMS_SINGLE_THREADED == 1)
-            handleClientConnections(self);
-#endif
+            if (isSingleThread)
+                handleClientConnections(self);
 
             return;
         }
 #endif
 
-        IsoConnection isoConnection = IsoConnection_create(connectionSocket, self);
+        IsoConnection isoConnection = IsoConnection_create(connectionSocket, self, isSingleThread);
 
         if (isoConnection) {
-
             addClientConnection(self, isoConnection);
+
+            if (isSingleThread)
+                IsoConnection_addToHandleSet(isoConnection, self->handleset);
 
             self->connectionHandler(ISO_CONNECTION_OPENED, self->connectionHandlerParameter,
                     isoConnection);
 
+            if (isSingleThread == false)
+                IsoConnection_start(isoConnection);
         }
-
-    }
-
-#if (CONFIG_MMS_SINGLE_THREADED == 1)
-    handleClientConnections(self);
-#endif
-}
-#endif /* (CONFIG_MMS_THREADLESS_STACK == 0) */
-
-/* used by non-threaded version */
-static void
-handleIsoConnectionsThreadless(IsoServer self)
-{
-    Socket connectionSocket;
-
-    if ((connectionSocket = ServerSocket_accept((ServerSocket) self->serverSocket)) != NULL) {
-
-#if (CONFIG_MMS_SERVER_CONFIG_SERVICES_AT_RUNTIME == 1)
-        if (self->maxConnections > -1) {
-            if (private_IsoServer_getConnectionCounter(self) >= self->maxConnections) {
-                if (DEBUG_ISO_SERVER)
-                    printf("ISO_SERVER: maximum number of connections reached -> reject connection attempt.\n");
-
-                Socket_destroy(connectionSocket);
-
-                return;
-            }
-        }
-#endif /* (CONFIG_MMS_SERVER_CONFIG_SERVICES_AT_RUNTIME == 1) */
-
-#if (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS != -1)
-        if (private_IsoServer_getConnectionCounter(self) >= CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS) {
-            if (DEBUG_ISO_SERVER)
-                printf("ISO_SERVER: maximum number of connections reached -> reject connection attempt.\n");
-
+        else {
             Socket_destroy(connectionSocket);
-
-            handleClientConnections(self);
-
-            return;
-        }
-#endif
-
-        IsoConnection isoConnection = IsoConnection_create(connectionSocket, self);
-
-        if (isoConnection) {
-
-            addClientConnection(self, isoConnection);
-
-            self->connectionHandler(ISO_CONNECTION_OPENED, self->connectionHandlerParameter,
-                    isoConnection);
-
         }
     }
 
-    handleClientConnections(self);
+    if (isSingleThread)
+        handleClientConnections(self);
 }
 
-#if (CONFIG_MMS_THREADLESS_STACK != 1)
+#if (CONFIG_MMS_SINGLE_THREADED == 0) && (CONFIG_MMS_THREADLESS_STACK == 0)
 /* only required for multi-threaded server! */
 static void
 isoServerThread(void* isoServerParam)
@@ -480,6 +536,8 @@ isoServerThread(void* isoServerParam)
         if (DEBUG_ISO_SERVER)
             printf("ISO_SERVER: starting server failed!\n");
 
+        self->serverSocket = NULL;
+
         goto cleanUp;
     }
 
@@ -488,19 +546,17 @@ isoServerThread(void* isoServerParam)
 
     while (self->state == ISO_SVR_STATE_RUNNING)
     {
-        handleIsoConnections(self);
+        removeTerminatedConnections(self, false);
 
-        Thread_sleep(1);
+        handleIsoConnections(self, false);
     }
 
     self->state = ISO_SVR_STATE_STOPPED;
 
-    cleanUp:
-    self->serverSocket = NULL;
+cleanUp:
 
     if (DEBUG_ISO_SERVER)
-           printf("ISO_SERVER: isoServerThread %p stopped\n", &isoServerParam);
-
+        printf("ISO_SERVER: isoServerThread %p stopped\n", &isoServerParam);
 }
 #endif
 
@@ -591,7 +647,7 @@ IsoServer_getTLSConfiguration(IsoServer self)
     return self->tlsConfiguration;
 }
 
-#if (CONFIG_MMS_THREADLESS_STACK != 1)
+#if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED != 1)
 void
 IsoServer_startListening(IsoServer self)
 {
@@ -618,7 +674,7 @@ IsoServer_startListening(IsoServer self)
 exit_function:
     return;
 }
-#endif /* (CONFIG_MMS_THREADLESS_STACK != 1) */
+#endif /* (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED != 1) */
 
 void
 IsoServer_startListeningThreadless(IsoServer self)
@@ -643,67 +699,15 @@ IsoServer_waitReady(IsoServer self, unsigned int timeoutMs)
    int result;
 
    if (getState(self) == ISO_SVR_STATE_RUNNING) {
-       HandleSet handles;
 
-       handles = Handleset_new();
-       if (handles != NULL) {
-
-#if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
-           lockClientConnections(self);
-#endif
-
-#if (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1)
-
-           LinkedList openConnection = LinkedList_getNext(self->openClientConnections);
-           LinkedList lastConnection = self->openClientConnections;
-
-           while (openConnection != NULL) {
-               IsoConnection isoConnection = (IsoConnection) openConnection->data;
-
-               if (IsoConnection_isRunning(isoConnection)) {
-                   IsoConnection_addHandleSet(isoConnection, handles);
-                   openConnection = LinkedList_getNext(openConnection);
-               } else {
-#if ((CONFIG_MMS_SINGLE_THREADED == 1) || (CONFIG_MMS_THREADLESS_STACK == 1))
-                   IsoConnection_destroy(isoConnection);
-#endif
-                   lastConnection->next = openConnection->next;
-                   GLOBAL_FREEMEM(openConnection);
-                   openConnection = lastConnection->next;
-               }
-
-               lastConnection = lastConnection->next;
-           }
-
-#else
-           int i;
-
-           for (i = 0; i < CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS; i++) {
-               if (self->openClientConnections[i] != NULL) {
-                   if (IsoConnection_isRunning(self->openClientConnections[i])) {
-                       IsoConnection_addHandleSet(self->openClientConnections[i], handles);
-                   }
-                   else {
-#if ((CONFIG_MMS_SINGLE_THREADED == 1) || (CONFIG_MMS_THREADLESS_STACK == 1))
-                       IsoConnection_destroy(self->openClientConnections[i]);
-#endif
-                       self->openClientConnections[i] = NULL;
-                   }
-               }
-           }
-
-#endif /* (CONFIG_MAXIMUM_TCP_CLIENT_CONNECTIONS == -1) */
-
-#if (CONFIG_MMS_THREADLESS_STACK != 1) && (CONFIG_MMS_SINGLE_THREADED == 0)
-           unlockClientConnections(self);
-#endif
-
-           Handleset_addSocket(handles, self->serverSocket);
-           result = Handleset_waitReady(handles, timeoutMs);
-           Handleset_destroy(handles);
-       } else {
-           result = -1;
+       if (self->handleset) {
+           result = Handleset_waitReady(self->handleset, 10);
        }
+       else {
+           if (DEBUG_ISO_SERVER)
+               printf("ISO_SERVER: internal error - no handleset!\n");
+       }
+
    } else {
        result = -1;
    }
@@ -711,12 +715,17 @@ IsoServer_waitReady(IsoServer self, unsigned int timeoutMs)
    return result;
 }
 
-
 void
 IsoServer_processIncomingMessages(IsoServer self)
 {
     if (getState(self) == ISO_SVR_STATE_RUNNING)
-        handleIsoConnectionsThreadless(self);
+        handleIsoConnections(self, true);
+}
+
+int
+IsoServer_getConnectionCounter(IsoServer self)
+{
+    return private_IsoServer_getConnectionCounter(self);
 }
 
 static void
@@ -745,10 +754,15 @@ IsoServer_stopListeningThreadless(IsoServer self)
 void
 IsoServer_stopListening(IsoServer self)
 {
-    stopListening(self);
+    setState(self, ISO_SVR_STATE_STOPPED);
 
     if (self->serverThread != NULL)
         Thread_destroy(self->serverThread);
+
+    if (self->serverSocket != NULL) {
+        ServerSocket_destroy((ServerSocket) self->serverSocket);
+        self->serverSocket = NULL;
+    }
 
     closeAllOpenClientConnections(self);
 
@@ -768,8 +782,6 @@ IsoServer_closeConnection(IsoServer self, IsoConnection isoConnection)
         self->connectionHandler(ISO_CONNECTION_CLOSED, self->connectionHandlerParameter,
                 isoConnection);
     }
-
-    removeClientConnection(self, isoConnection);
 }
 
 void
@@ -809,6 +821,9 @@ IsoServer_destroy(IsoServer self)
     Semaphore_destroy(self->connectionCounterMutex);
     Semaphore_destroy(self->openClientConnectionsMutex);
 #endif
+
+    if (self->handleset)
+        Handleset_destroy(self->handleset);
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
     Semaphore_destroy(self->stateLock);
@@ -853,6 +868,7 @@ private_IsoServer_getConnectionCounter(IsoServer self)
 }
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
+
 void
 IsoServer_setUserLock(IsoServer self, Semaphore userLock)
 {
@@ -872,4 +888,5 @@ IsoServer_userUnlock(IsoServer self)
     if (self->userLock != NULL)
         Semaphore_post(self->userLock);
 }
-#endif
+
+#endif /* (CONFIG_MMS_THREADLESS_STACK != 1) */

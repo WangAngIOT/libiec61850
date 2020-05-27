@@ -1,7 +1,7 @@
 /*
  * client_example_reporting.c
  *
- * This example is intended to be used with server_example3 or server_example_goose.
+ * This example is intended to be used with server_example_basic_io or server_example_goose.
  */
 
 #include "iec61850_client.h"
@@ -40,27 +40,41 @@ reportCallbackFunction(void* parameter, ClientReport report)
 		ctime_r(&unixTime, timeBuf);
 #endif
 
-        printf("  report contains timestamp (%u):", (unsigned int) unixTime);
-		printf("%s \n", timeBuf);
+        printf("  report contains timestamp (%u): %s", (unsigned int) unixTime, timeBuf);
     }
 
-    int i;
-    for (i = 0; i < LinkedList_size(dataSetDirectory); i++) {
-        ReasonForInclusion reason = ClientReport_getReasonForInclusion(report, i);
+    if (dataSetDirectory) {
+        int i;
+        for (i = 0; i < LinkedList_size(dataSetDirectory); i++) {
+            ReasonForInclusion reason = ClientReport_getReasonForInclusion(report, i);
 
-        if (reason != IEC61850_REASON_NOT_INCLUDED) {
+            if (reason != IEC61850_REASON_NOT_INCLUDED) {
 
-            LinkedList entry = LinkedList_get(dataSetDirectory, i);
+                char valBuffer[500];
+                sprintf(valBuffer, "no value");
 
-            char* entryName = (char*) entry->data;
+                if (dataSetValues) {
+                    MmsValue* value = MmsValue_getElement(dataSetValues, i);
 
-            printf("  %s (included for reason %i)\n", entryName, reason);
+                    if (value) {
+                        MmsValue_printToBuffer(value, valBuffer, 500);
+                    }
+                }
+
+                LinkedList entry = LinkedList_get(dataSetDirectory, i);
+
+                char* entryName = (char*) entry->data;
+
+                printf("  %s (included for reason %i): %s\n", entryName, reason, valBuffer);
+            }
         }
     }
+
 }
 
-int main(int argc, char** argv) {
-
+int
+main(int argc, char** argv)
+{
     char* hostname;
     int tcpPort = 102;
 
@@ -84,28 +98,28 @@ int main(int argc, char** argv) {
 
     if (error == IED_ERROR_OK) {
 
+        ClientReportControlBlock rcb = NULL;
+        ClientDataSet clientDataSet = NULL;
+        LinkedList dataSetDirectory = NULL;
+
         /* read data set directory */
-        LinkedList dataSetDirectory =
-                IedConnection_getDataSetDirectory(con, &error, "simpleIOGenericIO/LLN0.Events", NULL);
+        dataSetDirectory = IedConnection_getDataSetDirectory(con, &error, "testmodelSENSORS/LLN0.DataSetST_Attr", NULL);
 
         if (error != IED_ERROR_OK) {
             printf("Reading data set directory failed!\n");
-            goto exit_error;
+        //    goto exit_error;
         }
 
         /* read data set */
-        ClientDataSet clientDataSet;
-
-        clientDataSet = IedConnection_readDataSetValues(con, &error, "simpleIOGenericIO/LLN0.Events", NULL);
+        clientDataSet = IedConnection_readDataSetValues(con, &error, "testmodelSENSORS/LLN0.DataSetST_Attr", NULL);
 
         if (clientDataSet == NULL) {
             printf("failed to read dataset\n");
-            goto exit_error;
+           // goto exit_error;
         }
 
         /* Read RCB values */
-        ClientReportControlBlock rcb =
-                IedConnection_getRCBValues(con, &error, "simpleIOGenericIO/LLN0.RP.EventsRCB01", NULL);
+        rcb = IedConnection_getRCBValues(con, &error, "testmodelSENSORS/LLN0.RP.events01", NULL);
 
         if (error != IED_ERROR_OK) {
             printf("getRCBValues service error!\n");
@@ -114,16 +128,17 @@ int main(int argc, char** argv) {
 
         /* prepare the parameters of the RCP */
         ClientReportControlBlock_setResv(rcb, true);
-        ClientReportControlBlock_setDataSetReference(rcb, "simpleIOGenericIO/LLN0$Events"); /* NOTE the "$" instead of "." ! */
+        ClientReportControlBlock_setTrgOps(rcb, TRG_OPT_DATA_CHANGED | TRG_OPT_QUALITY_CHANGED | TRG_OPT_GI);
+        ClientReportControlBlock_setDataSetReference(rcb, "testmodelSENSORS/LLN0$DataSetST_Attr"); /* NOTE the "$" instead of "." ! */
         ClientReportControlBlock_setRptEna(rcb, true);
         ClientReportControlBlock_setGI(rcb, true);
 
         /* Configure the report receiver */
-        IedConnection_installReportHandler(con, "simpleIOGenericIO/LLN0.RP.EventsRCB", ClientReportControlBlock_getRptId(rcb), reportCallbackFunction,
+        IedConnection_installReportHandler(con, "testmodelSENSORS/LLN0.events01", ClientReportControlBlock_getRptId(rcb), reportCallbackFunction,
                 (void*) dataSetDirectory);
 
         /* Write RCB parameters and enable report */
-        IedConnection_setRCBValues(con, &error, rcb, RCB_ELEMENT_RESV | RCB_ELEMENT_DATSET | RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_GI, true);
+        IedConnection_setRCBValues(con, &error, rcb, RCB_ELEMENT_RESV | RCB_ELEMENT_DATSET | RCB_ELEMENT_TRG_OPS | RCB_ELEMENT_RPT_ENA | RCB_ELEMENT_GI, true);
 
         if (error != IED_ERROR_OK) {
             printf("setRCBValues service error!\n");
@@ -151,15 +166,22 @@ int main(int argc, char** argv) {
             }
         }
 
-        exit_error:
-
         /* disable reporting */
         ClientReportControlBlock_setRptEna(rcb, false);
         IedConnection_setRCBValues(con, &error, rcb, RCB_ELEMENT_RPT_ENA, true);
 
-        ClientDataSet_destroy(clientDataSet);
+exit_error:
 
         IedConnection_close(con);
+
+        if (clientDataSet)
+            ClientDataSet_destroy(clientDataSet);
+
+        if (rcb)
+            ClientReportControlBlock_destroy(rcb);
+
+        if (dataSetDirectory)
+            LinkedList_destroy(dataSetDirectory);
     }
     else {
         printf("Failed to connect to %s:%i\n", hostname, tcpPort);

@@ -70,6 +70,13 @@ typedef enum {
     MMS_CALL_TYPE_GET_FILE_DIR
 } eMmsOutstandingCallType;
 
+typedef union
+{
+    int32_t i32;
+    uint32_t u32;
+    void* ptr;
+} MmsClientInternalParameter;
+
 struct sMmsOutstandingCall
 {
     bool isUsed;
@@ -77,16 +84,14 @@ struct sMmsOutstandingCall
     eMmsOutstandingCallType type;
     void* userCallback;
     void* userParameter;
-    void* internalParameter;
+    MmsClientInternalParameter internalParameter;
     uint64_t timeout;
 };
 
-typedef struct sMmsOutstandingCall* MmsOutstandingCall;
-
 /* private instance variables */
 struct sMmsConnection {
-    Semaphore lastInvokeIdLock;
-    uint32_t lastInvokeId;
+    Semaphore nextInvokeIdLock;
+    uint32_t nextInvokeId;
 
     Semaphore outstandingCallsLock;
     MmsOutstandingCall outstandingCalls;
@@ -193,6 +198,9 @@ mmsClient_parseReadResponse(ByteBuffer* message, uint32_t* invokeId, bool create
 
 LIB61850_INTERNAL int
 mmsClient_createReadRequest(uint32_t invokeId, const char* domainId, const char* itemId, ByteBuffer* writeBuffer);
+
+LIB61850_INTERNAL int
+mmsClient_createReadRequestComponent(uint32_t invokeId, const char* domainId, const char* itemId, const char* component, ByteBuffer* writeBuffer);
 
 LIB61850_INTERNAL int
 mmsClient_createReadRequestAlternateAccessIndex(uint32_t invokeId, const char* domainId, const char* itemId,
@@ -363,6 +371,9 @@ MmsConnection connection,
 uint8_t* buffer, int bufPos, int maxBufPos,
 uint32_t invokeId,
 ByteBuffer* response);
+
+LIB61850_INTERNAL MmsOutstandingCall
+mmsClient_getMatchingObtainFileRequest(MmsConnection self, const char* filename);
 
 
 #endif /* MMS_MSG_INTERNAL_H_ */

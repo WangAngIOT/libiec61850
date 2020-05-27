@@ -44,15 +44,27 @@ struct sIedServer
     uint8_t writeAccessPolicies;
 
 #if (CONFIG_IEC61850_REPORT_SERVICE == 1)
-    int reportBufferSize;
+    int reportBufferSizeBRCBs;
+    int reportBufferSizeURCBs;
 #endif
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
     Semaphore dataModelLock;
+    Semaphore clientConnectionsLock;
 #endif
 
 #if (CONFIG_MMS_SERVER_CONFIG_SERVICES_AT_RUNTIME == 1)
     bool logServiceEnabled;
+#endif
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Thread serverThread;
+#endif
+
+#if (CONFIG_IEC61850_SUPPORT_SERVER_IDENTITY == 1)
+    char* vendorName;
+    char* modelName;
+    char* revision;
 #endif
 
     uint8_t edition;

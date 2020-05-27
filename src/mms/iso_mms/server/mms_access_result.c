@@ -107,9 +107,8 @@ getNumberOfElements(uint8_t* buffer, int bufPos, int elementLength)
 
          bufPos = BerDecoder_decodeLength(buffer, &elementLength, bufPos, elementEndBufPos);
 
-         if ((bufPos < 0) || (bufPos + elementLength > elementEndBufPos)) {
+         if (bufPos < 0)
              goto exit_with_error;
-         }
 
          switch (tag) {
          case 0x80: /* reserved for access result */
@@ -156,7 +155,7 @@ MmsValue_decodeMmsData(uint8_t* buffer, int bufPos, int bufferLength, int* endBu
 {
     MmsValue* value = NULL;
 
-    int dataEndBufPos = bufPos + bufferLength;
+    int dataEndBufPos = bufferLength;
 
     uint8_t tag = buffer[bufPos++];
 
@@ -164,7 +163,7 @@ MmsValue_decodeMmsData(uint8_t* buffer, int bufPos, int bufferLength, int* endBu
 
     bufPos = BerDecoder_decodeLength(buffer, &dataLength, bufPos, dataEndBufPos);
 
-    if (bufPos + dataLength > dataEndBufPos)
+    if (bufPos < 0)
         goto exit_with_error;
 
     switch (tag) {
@@ -172,8 +171,10 @@ MmsValue_decodeMmsData(uint8_t* buffer, int bufPos, int bufferLength, int* endBu
     case 0xa1: /* MMS_ARRAY */
     case 0xa2: /* MMS_STRUCTURE */
     {
-
         int elementCount = getNumberOfElements(buffer, bufPos, dataLength);
+
+        if (elementCount < 0)
+            goto exit_with_error;
 
         if (tag == 0xa1)
             value = MmsValue_createEmptyArray(elementCount);
@@ -188,10 +189,12 @@ MmsValue_decodeMmsData(uint8_t* buffer, int bufPos, int bufferLength, int* endBu
 
             int newBufPos = BerDecoder_decodeLength(buffer, &elementLength, bufPos + 1, dataEndBufPos);
 
-            if (newBufPos == -1)
+            if (newBufPos < 0)
                 goto exit_with_error;
 
-            MmsValue* elementValue = MmsValue_decodeMmsData(buffer, bufPos, dataLength, NULL);
+            int elementBufLength = newBufPos - bufPos + elementLength;
+
+            MmsValue* elementValue = MmsValue_decodeMmsData(buffer, bufPos, bufPos + elementBufLength, NULL);
 
             if (elementValue == NULL)
                 goto exit_with_error;
@@ -220,6 +223,10 @@ MmsValue_decodeMmsData(uint8_t* buffer, int bufPos, int bufferLength, int* endBu
     case 0x84: /* MMS_BIT_STRING */
     {
         int padding = buffer[bufPos];
+
+        if (padding > 7)
+            goto exit_with_error;
+
         int bitStringLength = (8 * (dataLength - 1)) - padding;
         value = MmsValue_newBitString(bitStringLength);
         memcpy(value->value.bitString.buf, buffer + bufPos + 1, dataLength - 1);
@@ -228,6 +235,9 @@ MmsValue_decodeMmsData(uint8_t* buffer, int bufPos, int bufferLength, int* endBu
         break;
 
     case 0x85: /* MMS_INTEGER */
+        if (dataLength > 8)
+            goto exit_with_error;
+
         value = MmsValue_newInteger(dataLength * 8);
         memcpy(value->value.integer->octets, buffer + bufPos, dataLength);
         value->value.integer->size = dataLength;
@@ -235,6 +245,9 @@ MmsValue_decodeMmsData(uint8_t* buffer, int bufPos, int bufferLength, int* endBu
         break;
 
     case 0x86: /* MMS_UNSIGNED */
+        if (dataLength > 8)
+            goto exit_with_error;
+
         value = MmsValue_newUnsigned(dataLength * 8);
         memcpy(value->value.integer->octets, buffer + bufPos, dataLength);
         value->value.integer->size = dataLength;

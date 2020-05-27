@@ -171,7 +171,7 @@ TLSConfiguration_create()
 
         mbedtls_ssl_conf_authmode(&(self->conf), MBEDTLS_SSL_VERIFY_REQUIRED);
 
-        mbedtls_ssl_conf_renegotiation(&(self->conf), MBEDTLS_SSL_RENEGOTIATION_ENABLED);
+        mbedtls_ssl_conf_renegotiation(&(self->conf), MBEDTLS_SSL_RENEGOTIATION_DISABLED);
 
         /* static int hashes[] = {3,4,5,6,7,8,0}; */
         /* mbedtls_ssl_conf_sig_hashes(&(self->conf), hashes); */
@@ -388,6 +388,9 @@ TLSSocket_create(Socket socket, TLSConfiguration configuration, bool storeClient
             {
                 DEBUG_PRINT("TLS", "mbedtls_ssl_handshake returned %d\n\n", ret );
 
+                mbedtls_ssl_config_free(&(self->conf));
+                mbedtls_ssl_free(&(self->ssl));
+
                 GLOBAL_FREEMEM(self);
 
                 return NULL;
@@ -476,7 +479,7 @@ TLSSocket_close(TLSSocket self)
 {
     int ret;
 
-    //TODO add timeout?
+    /* TODO add timeout? */
 
     while ((ret = mbedtls_ssl_close_notify(&(self->ssl))) < 0)
     {
@@ -491,6 +494,9 @@ TLSSocket_close(TLSSocket self)
 
     mbedtls_ssl_config_free(&(self->conf));
     mbedtls_ssl_free(&(self->ssl));
+
+    if (self->peerCert)
+        GLOBAL_FREEMEM(self->peerCert);
 
     GLOBAL_FREEMEM(self);
 }

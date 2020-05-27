@@ -112,28 +112,28 @@ mmsClient_parseGetNameListResponse(LinkedList* nameList, ByteBuffer* message)
 {
     /* TODO only parse get name list specific part here */
 
-	bool moreFollows = true;
+    bool moreFollows = true;
 
-	uint8_t* buffer = message->buffer;
-	int maxBufPos = message->size;
-	int bufPos = 0;
-	int length;
+    uint8_t* buffer = message->buffer;
+    int maxBufPos = message->size;
+    int bufPos = 0;
+    int length;
 
-	uint8_t tag = buffer[bufPos++];
-	if (tag == 0xa2) {
-	    /* TODO parse confirmed error PDU */
-	    goto exit_error;
-	}
-	if (tag != 0xa1) goto exit_error;
+    uint8_t tag = buffer[bufPos++];
+    if (tag == 0xa2) {
+        /* TODO parse confirmed error PDU */
+        goto exit_error;
+    }
+    if (tag != 0xa1) goto exit_error;
 
-	bufPos = BerDecoder_decodeLength(buffer, &length, bufPos, maxBufPos);
-	if (bufPos < 0) goto exit_error;
+    bufPos = BerDecoder_decodeLength(buffer, &length, bufPos, maxBufPos);
+    if (bufPos < 0) goto exit_error;
 
-	/* get invokeId */
-	tag = buffer[bufPos++];
-	if (tag != 0x02) goto exit_error;
+    /* get invokeId */
+    tag = buffer[bufPos++];
+    if (tag != 0x02) goto exit_error;
 
-	bufPos = BerDecoder_decodeLength(buffer, &length, bufPos, maxBufPos);
+    bufPos = BerDecoder_decodeLength(buffer, &length, bufPos, maxBufPos);
     if (bufPos < 0) goto exit_error;
 
     bufPos += length;
@@ -151,7 +151,6 @@ mmsClient_parseGetNameListResponse(LinkedList* nameList, ByteBuffer* message)
     if (bufPos < 0) goto exit_error;
 
     int listEndPos = bufPos + length;
-    if (listEndPos > maxBufPos) goto exit_error;
 
     if (*nameList == NULL)
         *nameList = LinkedList_create();
@@ -174,10 +173,15 @@ mmsClient_parseGetNameListResponse(LinkedList* nameList, ByteBuffer* message)
 
     if (bufPos < maxBufPos) {
 		tag = buffer[bufPos++];
+
 		if (tag != 0x81) goto exit_error;
+
 		bufPos = BerDecoder_decodeLength(buffer, &length, bufPos, maxBufPos);
+
 		if (bufPos < 0) goto exit_error;
+
 		if (length != 1) goto exit_error;
+
 		if (buffer[bufPos++] > 0)
 			moreFollows = true;
 		else

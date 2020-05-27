@@ -544,7 +544,7 @@ MmsValue_getBinaryTimeAsUtcMs(const MmsValue* self);
  *
  * This method will copy the provided buffer to the internal buffer of the
  * MmsValue instance. This will only happen if the internal buffer size is large
- * enough for the new value.
+ * enough for the new value. Otherwise the object value is not changed.
  *
  * \param self MmsValue instance to operate on. Has to be of a type MMS_OCTET_STRING.
  * \param buf the buffer that contains the new value
@@ -555,6 +555,9 @@ MmsValue_setOctetString(MmsValue* self, uint8_t* buf, int size);
 
 /**
  * \brief Returns the size in bytes of an MmsValue object of type MMS_OCTET_STRING.
+ *
+ * NOTE: To access the byte in the buffer the function \ref MmsValue_getOctetStringBuffer
+ * has to be used.
  *
  * \param self MmsValue instance to operate on. Has to be of a type MMS_OCTET_STRING.
  *
@@ -578,6 +581,8 @@ MmsValue_getOctetStringMaxSize(MmsValue* self);
 
 /**
  * \brief Returns the reference to the internally hold buffer of an MmsValue object of type MMS_OCTET_STRING.
+ *
+ * NOTE: The size of the buffer can be requested with the \ref MmsValue_getOctetStringSize function.
  *
  * \param self MmsValue instance to operate on. Has to be of a type MMS_OCTET_STRING.
  *
@@ -754,18 +759,6 @@ MmsValue_delete(MmsValue* self);
  */
 LIB61850_API void
 MmsValue_deleteConditional(MmsValue* value);
-
-/**
- * \brief Delete an MmsValue instance if the provided pointer is not NULL
- *
- * This operation frees all dynamically allocated memory of the MmsValue instance.
- * If the instance is of type MMS_STRUCTURE or MMS_ARRAY all child elements will
- * be deleted too.
- *
- * \param self the MmsValue instance to be deleted.
- */
-LIB61850_API void
-MmsValue_deleteIfNotNull(MmsValue* value);
 
 /**
  * \brief Create a new MmsValue instance of type MMS_VISIBLE_STRING.

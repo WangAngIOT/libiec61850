@@ -82,22 +82,22 @@ ClientReportControlBlock_destroy(ClientReportControlBlock self)
 {
     GLOBAL_FREEMEM(self->objectReference);
 
-    MmsValue_deleteIfNotNull(self->rptId);
-    MmsValue_deleteIfNotNull(self->rptEna);
-    MmsValue_deleteIfNotNull(self->resv);
-    MmsValue_deleteIfNotNull(self->datSet);
-    MmsValue_deleteIfNotNull(self->confRev);
-    MmsValue_deleteIfNotNull(self->optFlds);
-    MmsValue_deleteIfNotNull(self->bufTm);
-    MmsValue_deleteIfNotNull(self->sqNum);
-    MmsValue_deleteIfNotNull(self->trgOps);
-    MmsValue_deleteIfNotNull(self->intgPd);
-    MmsValue_deleteIfNotNull(self->gi);
-    MmsValue_deleteIfNotNull(self->purgeBuf);
-    MmsValue_deleteIfNotNull(self->entryId);
-    MmsValue_deleteIfNotNull(self->timeOfEntry);
-    MmsValue_deleteIfNotNull(self->resvTms);
-    MmsValue_deleteIfNotNull(self->owner);
+    MmsValue_delete(self->rptId);
+    MmsValue_delete(self->rptEna);
+    MmsValue_delete(self->resv);
+    MmsValue_delete(self->datSet);
+    MmsValue_delete(self->confRev);
+    MmsValue_delete(self->optFlds);
+    MmsValue_delete(self->bufTm);
+    MmsValue_delete(self->sqNum);
+    MmsValue_delete(self->trgOps);
+    MmsValue_delete(self->intgPd);
+    MmsValue_delete(self->gi);
+    MmsValue_delete(self->purgeBuf);
+    MmsValue_delete(self->entryId);
+    MmsValue_delete(self->timeOfEntry);
+    MmsValue_delete(self->resvTms);
+    MmsValue_delete(self->owner);
 
     GLOBAL_FREEMEM(self);
 }
@@ -324,6 +324,12 @@ ClientReportControlBlock_setPurgeBuf(ClientReportControlBlock self, bool purgeBu
         MmsValue_setBoolean(self->purgeBuf, purgeBuf);
 }
 
+bool
+ClientReportControlBlock_hasResvTms(ClientReportControlBlock self)
+{
+    return (self->resvTms != NULL);
+}
+
 int16_t
 ClientReportControlBlock_getResvTms(ClientReportControlBlock self)
 {
@@ -432,7 +438,8 @@ clientReportControlBlock_updateValues(ClientReportControlBlock self, MmsValue* v
         if (!checkElementType(values, 12, MMS_BINARY_TIME)) return false;
 
         if (rcbElementCount == 14) {
-            if (!checkElementType(values, 13, MMS_OCTET_STRING)) return false;
+            if (!checkElementType(values, 13, MMS_OCTET_STRING) && !checkElementType(values, 13, MMS_INTEGER))
+                return false;
         }
         else if (rcbElementCount == 15) {
             if (!checkElementType(values, 13, MMS_INTEGER)) return false;
@@ -669,6 +676,8 @@ IedConnection_getRCBValues(IedConnection self, IedClientError* error, const char
 
         *error = iedConnection_mapDataAccessErrorToIedError(
                         MmsValue_getDataAccessError(rcb));
+
+        MmsValue_delete(rcb);
 
         return NULL;
     }

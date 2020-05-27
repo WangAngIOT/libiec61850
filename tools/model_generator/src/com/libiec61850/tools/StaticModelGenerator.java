@@ -3,7 +3,7 @@ package com.libiec61850.tools;
 /*
  *  StaticModelGenerator.java
  *
- *  Copyright 2013-2016 Michael Zillgith
+ *  Copyright 2013-2020 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -29,17 +29,24 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.LinkedList;
 import java.util.List;
 
 import com.libiec61850.scl.SclParser;
 import com.libiec61850.scl.SclParserException;
+import com.libiec61850.scl.communication.Address;
 import com.libiec61850.scl.communication.Communication;
 import com.libiec61850.scl.communication.ConnectedAP;
 import com.libiec61850.scl.communication.GSE;
+import com.libiec61850.scl.communication.P;
 import com.libiec61850.scl.communication.PhyComAddress;
 import com.libiec61850.scl.communication.SubNetwork;
 import com.libiec61850.scl.model.AccessPoint;
+import com.libiec61850.scl.model.ClientLN;
 import com.libiec61850.scl.model.DataAttribute;
 import com.libiec61850.scl.model.DataModelValue;
 import com.libiec61850.scl.model.DataObject;
@@ -53,6 +60,7 @@ import com.libiec61850.scl.model.LogControl;
 import com.libiec61850.scl.model.LogicalDevice;
 import com.libiec61850.scl.model.LogicalNode;
 import com.libiec61850.scl.model.ReportControlBlock;
+import com.libiec61850.scl.model.RptEnabled;
 import com.libiec61850.scl.model.SampledValueControl;
 import com.libiec61850.scl.model.Server;
 import com.libiec61850.scl.model.SettingControl;
@@ -103,6 +111,8 @@ public class StaticModelGenerator {
 	private String hDefineName;
 	private String modelPrefix;
 	private boolean initializeOnce;
+	
+	private SclParser sclParser;
 
     public StaticModelGenerator(InputStream stream, String icdFile, PrintStream cOut, PrintStream hOut,
     		String outputFileName, String iedName, String accessPointName, String modelPrefix,
@@ -131,7 +141,7 @@ public class StaticModelGenerator {
         this.logs = new StringBuffer();
         this.logVariableNames = new LinkedList<String>();
         
-        SclParser sclParser = new SclParser(stream);
+        sclParser = new SclParser(stream);
 
 		this.outputFileName = outputFileName;
 		this.hDefineName = outputFileName.toUpperCase().replace( '.', '_' ).replace( '-', '_' ) + "_H_";
@@ -788,6 +798,17 @@ public class StaticModelGenerator {
             }
             break;
             
+        case CODEDENUM:
+            {     
+                buffer.append("MmsValue_newBitString(2);\n");
+                buffer.append("MmsValue_setBitStringFromIntegerBigEndian(");
+                buffer.append(daName);
+                buffer.append(".mmsValue, ");
+                buffer.append(value.getValue().toString());
+                buffer.append(");\n");
+            }
+            break;
+            
         case UNICODE_STRING_255:
             buffer.append("MmsValue_newMmsString(\"" + value.getValue() + "\");");
             break;
@@ -1006,8 +1027,10 @@ public class StaticModelGenerator {
 
         for (GSEControl gseControlBlock : gseControlBlocks) {
 
-            PhyComAddress gseAddress = connectedAP.lookupGSEAddress(logicalDeviceName, gseControlBlock.getName());
+            GSE gse = connectedAP.lookupGSE(logicalDeviceName, gseControlBlock.getName());
 
+            PhyComAddress gseAddress = gse.getAddress();
+            
             String gseString = "";
 
             String phyComAddrName = "";
@@ -1061,8 +1084,8 @@ public class StaticModelGenerator {
             else
                 gseString += "NULL, ";
             
-            gseString += gseControlBlock.getMinTime() + ", ";
-            gseString += gseControlBlock.getMaxTime() + ", ";
+            gseString += gse.getMinTime() + ", ";
+            gseString += gse.getMaxTime() + ", ";
 
             currentGseVariableNumber++;
             
@@ -1078,6 +1101,51 @@ public class StaticModelGenerator {
             gseControlNumber++;
         }
     }
+    
+    private String getIpAddressByIedName(SclParser sclParser, String iedName, String apRef) 
+    {
+    	Communication com = sclParser.getCommunication();
+    	
+    	if (com != null) {
+    		
+    		for (SubNetwork subNetWork : com.getSubNetworks()) {
+    			
+    			for (ConnectedAP ap : subNetWork.getConnectedAPs()) {
+    				
+    				if (apRef != null) {
+    					boolean isMatching = false;
+    					
+    					String apName = ap.getApName();
+    					
+    					if (apName != null) {
+    						if (apName.equals(apRef))
+    							isMatching = true;
+    					}
+    					
+    					if (isMatching == false)
+    						continue;
+    				}
+    				
+    				String apIedName = ap.getIedName();
+    				
+    				if (apIedName != null) {
+    					if (apIedName.equals(iedName)) {
+    	    				Address address = ap.getAddress();
+    	    	    		
+    	    	    		if (address != null) {
+    	    	    			P ip = address.getAddressParameter("IP");
+    	    	    			
+    	    	    			if (ip != null)
+    	    	    				return ip.getText();
+    	    	    		}
+    					}
+    				}				
+    			}
+    		}
+    	}
+    	
+    	return null;
+    }
 
     private void printReportControlBlocks(String lnPrefix, LogicalNode logicalNode) {
         List<ReportControlBlock> reportControlBlocks = logicalNode.getReportControlBlocks();
@@ -1091,20 +1159,75 @@ public class StaticModelGenerator {
             if (rcb.isIndexed()) {
 
                 int maxInstances = 1;
+                
+                List<ClientLN> clientLNs = null;
 
-                if (rcb.getRptEna() != null)
-                    maxInstances = rcb.getRptEna().getMaxInstances();
+                if (rcb.getRptEna() != null) {
+                    RptEnabled rptEna = rcb.getRptEna();
+                	
+                    maxInstances = rptEna.getMaxInstances();
+
+                    clientLNs = rptEna.getClientLNs();
+                }
+                
 
                 for (int i = 0; i < maxInstances; i++) {
                     String index = String.format("%02d", (i + 1));
 
                     System.out.println("print report instance " + index);
+                    
+                    byte[] clientAddress = new byte[17];
+                    clientAddress[0] = 0;
+                    
+                    if (clientLNs != null) {                	
+                    	try {
+                    		ClientLN clientLN = clientLNs.get(i);
+                    		
+                    		if (clientLN != null) {
+                    			
+                    			String iedName = clientLN.getIedName();
+                    			String apRef = clientLN.getApRef();
+                    			
+                    			if (iedName != null) {
+                    				String ipAddress = getIpAddressByIedName(sclParser, iedName, apRef);    
+                    				
+                    				try {
+										InetAddress inetAddr = InetAddress.getByName(ipAddress);
+									
+										if (inetAddr instanceof Inet4Address) {
+											clientAddress[0] = 4;
+											for (int j = 0; j < 4; j++)
+												clientAddress[j + 1] = inetAddr.getAddress()[j];
+										}
+										else if (inetAddr instanceof Inet6Address) {
+											clientAddress[0] = 6;
+											for (int j = 0; j < 16; j++)
+												clientAddress[j + 1] = inetAddr.getAddress()[j];
+										}
+									
+										inetAddr.getAddress();
+									} catch (UnknownHostException e) {
+										// TODO Auto-generated catch block
+										e.printStackTrace();
+									}
+                    			}
+	                    	                  		
+                    		}
+                    	}
+                    	catch (IndexOutOfBoundsException ex) {
+                    		/* no ClientLN defined for this report instance */
+                    	}
+                    }
+                   
 
-                    printReportControlBlockInstance(lnPrefix, rcb, index, reportNumber, reportsCount);
+                    printReportControlBlockInstance(lnPrefix, rcb, index, reportNumber, reportsCount, clientAddress);
                     reportNumber++;
                 }
             } else {
-                printReportControlBlockInstance(lnPrefix, rcb, "", reportNumber, reportsCount);
+                byte[] clientAddress = new byte[17];
+                clientAddress[0] = 0;
+            	
+                printReportControlBlockInstance(lnPrefix, rcb, "", reportNumber, reportsCount, clientAddress);
                 reportNumber++;
             }
         }
@@ -1259,7 +1382,7 @@ public class StaticModelGenerator {
         this.logControlBlocks.append(lcbString);
     }
 
-    private void printReportControlBlockInstance(String lnPrefix, ReportControlBlock rcb, String index, int reportNumber, int reportsCount) 
+    private void printReportControlBlockInstance(String lnPrefix, ReportControlBlock rcb, String index, int reportNumber, int reportsCount, byte[] clientIpAddr) 
     {
         String rcbVariableName = lnPrefix + "_report" + reportNumber;
 
@@ -1326,9 +1449,19 @@ public class StaticModelGenerator {
             rcbString += rcb.getIntegrityPeriod().toString() + ", ";
         else
             rcbString += "0, ";
+        
+        rcbString += "{";
 
+        for (int i = 0; i < 17; i++) {
+        	rcbString += "0x" + Integer.toHexString((int) (clientIpAddr[i] & 0xff));
+            if (i == 16)
+            	rcbString += "}, ";
+            else
+            	rcbString += ", ";
+        }
+        
         currentRcbVariableNumber++;
-    
+        
         if (currentRcbVariableNumber < rcbVariableNames.size())
         	rcbString += "&" + rcbVariableNames.get(currentRcbVariableNumber);
         else

@@ -3,7 +3,7 @@
  *
  *  IEC 61850 server API for libiec61850.
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2020 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -50,6 +50,9 @@ struct sIedServerConfig
 {
     /** size of the report buffer associated with a buffered report control block */
     int reportBufferSize;
+
+    /** size of the report buffer associated with an unbuffered report control block */
+    int reportBufferSizeURCBs;
 
     /** Base path (directory where the file service serves files */
     char* fileServiceBasepath;
@@ -124,6 +127,22 @@ IedServerConfig_setReportBufferSize(IedServerConfig self, int reportBufferSize);
  */
 LIB61850_API int
 IedServerConfig_getReportBufferSize(IedServerConfig self);
+
+/**
+ * \brief Set the report buffer size for unbuffered reporting
+ *
+ * \param reportBufferSize the buffer size for each unbuffered report control block
+ */
+LIB61850_API void
+IedServerConfig_setReportBufferSizeForURCBs(IedServerConfig self, int reportBufferSize);
+
+/**
+ * \brief Gets the report buffer size for unbuffered reporting
+ *
+ * \return the buffer size for each unbuffered report control block
+ */
+LIB61850_API int
+IedServerConfig_getReportBufferSizeForURCBs(IedServerConfig self);
 
 /**
  * \brief Set the maximum number of MMS (TCP) connections the server accepts
@@ -329,6 +348,19 @@ LIB61850_API void
 IedServer_setLocalIpAddress(IedServer self, const char* localIpAddress);
 
 /**
+ * \brief Set the identify for the MMS identify service
+ *
+ * CONFIG_IEC61850_SUPPORT_SERVER_IDENTITY required
+ *
+ * \param self the IedServer instance
+ * \param vendor the IED vendor name
+ * \param model the IED model name
+ * \param revision the IED revision/version number
+ */
+LIB61850_API void
+IedServer_setServerIdentity(IedServer self, const char* vendor, const char* model, const char* revision);
+
+/**
  * \brief Set the virtual filestore basepath for the MMS file services
  *
  * All external file service accesses will be mapped to paths relative to the base directory.
@@ -439,6 +471,16 @@ LIB61850_API bool
 IedServer_isRunning(IedServer self);
 
 /**
+ * \brief Get number of open MMS connections
+ *
+ * \param self the instance of IedServer to operate on
+ *
+ * \return the number of open and accepted MMS connections
+ */
+LIB61850_API int
+IedServer_getNumberOfOpenConnections(IedServer self);
+
+/**
  * \brief Get access to the underlying MmsServer instance.
  *
  * This function should be handled with care. Since direct interaction with the
@@ -459,6 +501,8 @@ IedServer_getMmsServer(IedServer self);
  * then configured GOOSE control blocks keep inactive until a MMS client enables
  * them by writing to the GOOSE control block.
  *
+ * Note: This function has no effect when CONFIG_INCLUDE_GOOSE_SUPPORT is not set.
+ *
  * \param self the instance of IedServer to operate on.
  */
 LIB61850_API void
@@ -469,6 +513,8 @@ IedServer_enableGoosePublishing(IedServer self);
  *
  * This will set the GoEna attribute of all configured GOOSE control blocks
  * to false. This will stop GOOSE transmission.
+ *
+ * Note: This function has no effect when CONFIG_INCLUDE_GOOSE_SUPPORT is not set.
  *
  * \param self the instance of IedServer to operate on.
  */
@@ -482,11 +528,45 @@ IedServer_disableGoosePublishing(IedServer self);
  * default interface ID from stack_config.h is used. Note the interface ID is operating system
  * specific!
  *
+ * Note: This function has no effect when CONFIG_INCLUDE_GOOSE_SUPPORT is not set.
+ *
  * \param self the instance of IedServer to operate on.
  * \param interfaceId the ID of the ethernet interface to be used for GOOSE publishing
  */
 LIB61850_API void
 IedServer_setGooseInterfaceId(IedServer self, const char* interfaceId);
+
+/**
+ * \brief Set the Ethernet interface to be used by GOOSE publishing
+ *
+ * This function can be used to set the GOOSE interface ID forG all CBs (parameter ln = NULL) or for
+ * a specific GCB specified by the logical node instance and the GCB name.
+ *
+ * Note: This function has no effect when CONFIG_INCLUDE_GOOSE_SUPPORT is not set.
+ *
+ * \param self the instance of IedServer to operate on.
+ * \param ln the logical node that contains the GCB or NULL to enable/disable VLAN tagging for all GCBs
+ * \param gcbName the name (not object reference!) of the GCB
+ * \param interfaceId the ID of the ethernet interface to be used for GOOSE publishing
+ */
+LIB61850_API void
+IedServer_setGooseInterfaceIdEx(IedServer self, LogicalNode* ln, const char* gcbName, const char* interfaceId);
+
+/**
+ * \brief Enable/disable the use of VLAN tags in GOOSE messages
+ *
+ * This function can be used to enable/disable VLAN tagging for all GCBs (parameter ln = NULL) or for
+ * a specific GCB specified by the logical node instance and the GCB name.
+ *
+ * Note: This function has no effect when CONFIG_INCLUDE_GOOSE_SUPPORT is not set.
+ *
+ * \param self the instance of IedServer to operate on
+ * \param ln the logical node that contains the GCB or NULL to enable/disable VLAN tagging for all GCBs
+ * \param gcbName the name (not object reference!) of the GCB
+ * \param useVlanTag true to enable VLAN tagging, false otherwise
+ */
+LIB61850_API void
+IedServer_useGooseVlanTag(IedServer self, LogicalNode* ln, const char* gcbName, bool useVlanTag);
 
 /**@}*/
 
@@ -524,6 +604,18 @@ IedServer_setAuthenticator(IedServer self, AcseAuthenticator authenticator, void
  */
 LIB61850_API const char*
 ClientConnection_getPeerAddress(ClientConnection self);
+
+/**
+ * \brief get the local address of this connection as string
+ *
+ * Note: the returned string is only valid as long as the client connection exists. It is save to use
+ * the string inside of the connection indication callback function.
+ *
+ * \param self the ClientConnection instance
+ * \return local address as C string.
+ */
+LIB61850_API const char*
+ClientConnection_getLocalAddress(ClientConnection self);
 
 /**
  * \brief Get the security token associated with this connection
@@ -808,7 +900,7 @@ IedServer_updateInt32AttributeValue(IedServer self, DataAttribute* dataAttribute
  * \param value the new Dbpos value of the data attribute.
  */
 LIB61850_API void
-IedServer_udpateDbposValue(IedServer self, DataAttribute* dataAttribute, Dbpos value);
+IedServer_updateDbposValue(IedServer self, DataAttribute* dataAttribute, Dbpos value);
 
 /**
  * \brief Update the value of an IEC 61850 integer64 data attribute (like BCR actVal)
@@ -1083,8 +1175,100 @@ typedef enum {
     CONTROL_RESULT_WAITING = 2 /** check or operation is in progress */
 } ControlHandlerResult;
 
+typedef void* ControlAction;
+
+/**
+ * \brief Sets the error code for the next command termination or application error message
+ *
+ * \param self the control action instance
+ * \param error the error code
+ */
+LIB61850_API void
+ControlAction_setError(ControlAction self, ControlLastApplError error);
+
+/**
+ * \brief Sets the add cause for the next command termination or application error message
+ *
+ * \param self the control action instance
+ * \param addCause the additional cause
+ */
+LIB61850_API void
+ControlAction_setAddCause(ControlAction self, ControlAddCause addCause);
+
+/**
+ * \brief Gets the originator category provided by the client
+ *
+ * \param self the control action instance
+ *
+ * \return the originator category
+ */
+LIB61850_API int
+ControlAction_getOrCat(ControlAction self);
+
+/**
+ * \brief Gets the originator identifier provided by the client
+ *
+ * \param self the control action instance
+ *
+ * \return the originator identifier
+ */
+LIB61850_API uint8_t*
+ControlAction_getOrIdent(ControlAction self, int* orIdentSize);
+
+/**
+ * \brief Get the ctlNum attribute send by the client
+ *
+ * \param self the control action instance
+ *
+ * \return the ctlNum value
+ */
+LIB61850_API int
+ControlAction_getCtlNum(ControlAction self);
+
+/**
+ * \brief Check if the control callback is called by a select or operate command
+ *
+ * \param self the control action instance
+ *
+ * \return true, when called by select, false for operate
+ */
+LIB61850_API bool
+ControlAction_isSelect(ControlAction self);
+
+/**
+ * \brief Gets the client object associated with the client that caused the control action
+ *
+ * \param self the control action instance
+ *
+ * \return client connection instance
+ */
+LIB61850_API ClientConnection
+ControlAction_getClientConnection(ControlAction self);
+
+/**
+ * \brief Gets the control object that is subject to this action
+ *
+ * \param self the control action instance
+ *
+ * \return the controllable data object instance
+ */
+LIB61850_API DataObject*
+ControlAction_getControlObject(ControlAction self);
+
+/**
+ * \brief Gets the time of the control, if it's a timeActivatedControl, returns 0, if it's not.
+ *
+ * \param self the control action instance
+ *
+ * \return the controllable data object instance
+ */
+LIB61850_API uint64_t
+ControlAction_getControlTime(ControlAction self);
+
 /**
  * \brief Control model callback to perform the static tests (optional).
+ *
+ * NOTE: Signature changed in version 1.4!
  *
  * User provided callback function for the control model. It will be invoked after
  * a control operation has been invoked by the client. This callback function is
@@ -1093,19 +1277,20 @@ typedef enum {
  * This handler can also be check if the client has the required permissions to execute the
  * operation and allow or deny the operation accordingly.
  *
+ * \param action the control action parameter that provides access to additional context information
  * \param parameter the parameter that was specified when setting the control handler
  * \param ctlVal the control value of the control operation.
  * \param test indicates if the operate request is a test operation
  * \param interlockCheck the interlockCheck parameter provided by the client
- * \param connection the connection object of the client connection that invoked the control operation
  *
  * \return CONTROL_ACCEPTED if the static tests had been successful, one of the error codes otherwise
  */
-typedef CheckHandlerResult (*ControlPerformCheckHandler) (void* parameter, MmsValue* ctlVal, bool test, bool interlockCheck,
-        ClientConnection connection);
+typedef CheckHandlerResult (*ControlPerformCheckHandler) (ControlAction action, void* parameter, MmsValue* ctlVal, bool test, bool interlockCheck);
 
 /**
  * \brief Control model callback to perform the dynamic tests (optional).
+ *
+ * NOTE: Signature changed in version 1.4!
  *
  * User provided callback function for the control model. It will be invoked after
  * a control operation has been invoked by the client. This callback function is
@@ -1115,6 +1300,7 @@ typedef CheckHandlerResult (*ControlPerformCheckHandler) (void* parameter, MmsVa
  * cannot be performed immediately the function SHOULD return CONTROL_RESULT_WAITING and the
  * handler will be invoked again later.
  *
+ * \param action the control action parameter that provides access to additional context information
  * \param parameter the parameter that was specified when setting the control handler
  * \param ctlVal the control value of the control operation.
  * \param test indicates if the operate request is a test operation
@@ -1123,10 +1309,12 @@ typedef CheckHandlerResult (*ControlPerformCheckHandler) (void* parameter, MmsVa
  * \return CONTROL_RESULT_OK if the dynamic tests had been successful, CONTROL_RESULT_FAILED otherwise,
  *         CONTROL_RESULT_WAITING if the test is not yet finished
  */
-typedef ControlHandlerResult (*ControlWaitForExecutionHandler) (void* parameter, MmsValue* ctlVal, bool test, bool synchroCheck);
+typedef ControlHandlerResult (*ControlWaitForExecutionHandler) (ControlAction action, void* parameter, MmsValue* ctlVal, bool test, bool synchroCheck);
 
 /**
  * \brief Control model callback to actually perform the control operation.
+ *
+ * NOTE: Signature changed in version 1.4!
  *
  * User provided callback function for the control model. It will be invoked when
  * a control operation happens (Oper). Here the user should perform the control operation
@@ -1135,6 +1323,7 @@ typedef ControlHandlerResult (*ControlWaitForExecutionHandler) (void* parameter,
  * cannot be performed immediately the function SHOULD return CONTROL_RESULT_WAITING and the
  * handler will be invoked again later.
  *
+ * \param action the control action parameter that provides access to additional context information
  * \param parameter the parameter that was specified when setting the control handler
  * \param ctlVal the control value of the control operation.
  * \param test indicates if the operate request is a test operation
@@ -1142,7 +1331,7 @@ typedef ControlHandlerResult (*ControlWaitForExecutionHandler) (void* parameter,
  * \return CONTROL_RESULT_OK if the control action bas been successful, CONTROL_RESULT_FAILED otherwise,
  *         CONTROL_RESULT_WAITING if the test is not yet finished
  */
-typedef ControlHandlerResult (*ControlHandler) (void* parameter, MmsValue* ctlVal, bool test);
+typedef ControlHandlerResult (*ControlHandler) (ControlAction action, void* parameter, MmsValue* ctlVal, bool test);
 
 /**
  * \brief Set control handler for controllable data object

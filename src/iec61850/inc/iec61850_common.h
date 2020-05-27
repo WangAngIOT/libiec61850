@@ -1,7 +1,7 @@
 /*
  *  iec61850_common.h
  *
- *  Copyright 2013 Michael Zillgith
+ *  Copyright 2013-2019 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -92,7 +92,7 @@ typedef enum {
  * @{
  */
 
-/** Report will be triggerd when data changes */
+/** Report will be triggered when data changes */
 #define TRG_OPT_DATA_CHANGED 1
 
 /** Report will be triggered when quality changes */
@@ -106,6 +106,9 @@ typedef enum {
 
 /** Report will be triggered by GI (general interrogation) request */
 #define TRG_OPT_GI 16
+
+/** Report will be triggered only on rising edge (transient variable */
+#define TRG_OPT_TRANSIENT 128
 /** @} */
 
 
@@ -217,6 +220,21 @@ typedef enum {
 /** @} */
 
 /**
+ * @defgroup CONTROL_LAST_APPL_ERROR Definition for LastAppError error type - used in control models
+ *
+ * @{
+ */
+
+typedef enum {
+    CONTROL_ERROR_NO_ERROR = 0,
+    CONTROL_ERROR_UNKNOWN = 1,
+    CONTROL_ERROR_TIMEOUT_TEST = 2,
+    CONTROL_ERROR_OPERATOR_TEST = 3
+} ControlLastApplError;
+
+/** @} */
+
+/**
  * @defgroup FUNCTIONAL_CONSTRAINTS Definitions and functions related to functional constraints (FCs)
  *
  * @{
@@ -279,6 +297,8 @@ typedef enum eFunctionalConstraint {
     IEC61850_FC_BR = 16,
     /** Log control blocks */
     IEC61850_FC_LG = 17,
+    /** Goose control blocks */
+    IEC61850_FC_GO = 18,
 
     /** All FCs - wildcard value */
     IEC61850_FC_ALL = 99,

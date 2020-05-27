@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 2.8.12)
 
 # automagically detect if we should cross-compile
 if(DEFINED ENV{TOOLCHAIN})
@@ -12,7 +12,7 @@ ENABLE_TESTING()
 
 set(LIB_VERSION_MAJOR "1")
 set(LIB_VERSION_MINOR "4")
-set(LIB_VERSION_PATCH "0")
+set(LIB_VERSION_PATCH "2")
 set(LIB_VERSION "${LIB_VERSION_MAJOR}.${LIB_VERSION_MINOR}.${LIB_VERSION_PATCH}")
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/third_party/cmake/modules/")
@@ -41,6 +41,7 @@ option(CONFIG_IEC61850_CONTROL_SERVICE "Build with support for IEC 61850 control
 option(CONFIG_IEC61850_REPORT_SERVICE "Build with support for IEC 61850 reporting services" ON)
 option(CONFIG_IEC61850_LOG_SERVICE "Build with support for IEC 61850 logging services" ON)
 option(CONFIG_IEC61850_SETTING_GROUPS "Build with support for IEC 61850 setting group services" ON)
+option(CONFIG_IEC61850_SUPPORT_USER_READ_ACCESS_CONTROL "Allow user provided callback to control read access" ON)
 
 set(CONFIG_REPORTING_DEFAULT_REPORT_BUFFER_SIZE "65536" CACHE STRING "Default buffer size for buffered reports in byte" )
 
@@ -82,12 +83,8 @@ set(API_HEADERS
     hal/inc/hal_ethernet.h
     hal/inc/hal_socket.h
     hal/inc/tls_config.h
-    hal/inc/platform_endian.h
-    hal/inc/lib_memory.h
     src/common/inc/libiec61850_common_api.h
-    src/common/inc/libiec61850_platform_includes.h
     src/common/inc/linked_list.h
-    src/common/inc/string_utilities.h
     src/iec61850/inc/iec61850_client.h
     src/iec61850/inc/iec61850_common.h
     src/iec61850/inc/iec61850_server.h
@@ -100,6 +97,7 @@ set(API_HEADERS
     src/mms/inc/mms_types.h
     src/mms/inc/mms_type_spec.h
     src/mms/inc/mms_client_connection.h
+    src/mms/inc/mms_server.h
     src/mms/inc/iso_connection_parameters.h
     src/goose/goose_subscriber.h
     src/goose/goose_receiver.h
@@ -107,18 +105,17 @@ set(API_HEADERS
     src/sampled_values/sv_subscriber.h
     src/sampled_values/sv_publisher.h
     src/logging/logging_api.h
-    ${CMAKE_CURRENT_BINARY_DIR}/config/stack_config.h
 )
 
 if(MSVC AND MSVC_VERSION LESS 1800)
     include_directories(
         ${CMAKE_CURRENT_LIST_DIR}/src/vs
     )
-endif()
+endif(MSVC AND MSVC_VERSION LESS 1800)
 
-if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/third_party/mbedtls/mbedtls-2.6.0)
+if(EXISTS ${CMAKE_CURRENT_LIST_DIR}/third_party/mbedtls/mbedtls-2.16)
 set(WITH_MBEDTLS 1)
-endif(EXISTS ${CMAKE_CURRENT_LIST_DIR}/third_party/mbedtls/mbedtls-2.6.0)
+endif(EXISTS ${CMAKE_CURRENT_LIST_DIR}/third_party/mbedtls/mbedtls-2.16)
 
 if(WITH_MBEDTLS)
 
@@ -137,6 +134,10 @@ include_directories(
 )
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/hal")
+
+if(DEBUG)
+	set(CMAKE_BUILD_TYPE Debug)
+endif(DEBUG)
 
 if(BUILD_EXAMPLES)
     add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/examples)
@@ -168,3 +169,5 @@ if(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
 
     include(CPack)
 endif(EXISTS "${CMAKE_ROOT}/Modules/CPack.cmake")
+
+

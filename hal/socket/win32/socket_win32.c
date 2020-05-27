@@ -1,7 +1,7 @@
 /*
  *  socket_win32.c
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2020 Michael Zillgith
  *
  *	This file is part of libIEC61850.
  *
@@ -33,7 +33,6 @@
 #include "hal_socket.h"
 #include "stack_config.h"
 
-
 #ifndef __MINGW64_VERSION_MAJOR
 struct tcp_keepalive {
     u_long  onoff;
@@ -45,13 +44,13 @@ struct tcp_keepalive {
 #define SIO_KEEPALIVE_VALS    _WSAIOW(IOC_VENDOR,4)
 
 struct sSocket {
-	SOCKET fd;
-	uint32_t connectTimeout;
+    SOCKET fd;
+    uint32_t connectTimeout;
 };
 
 struct sServerSocket {
-	SOCKET fd;
-	int backLog;
+    SOCKET fd;
+    int backLog;
 };
 
 struct sHandleSet {
@@ -82,6 +81,7 @@ void
 Handleset_addSocket(HandleSet self, const Socket sock)
 {
    if (self != NULL && sock != NULL && sock->fd != INVALID_SOCKET) {
+
        FD_SET(sock->fd, &self->handles);
 
        if ((sock->fd > self->maxHandle) || (self->maxHandle == INVALID_SOCKET))
@@ -89,17 +89,30 @@ Handleset_addSocket(HandleSet self, const Socket sock)
    }
 }
 
+void
+Handleset_removeSocket(HandleSet self, const Socket sock)
+{
+    if (self != NULL && sock != NULL && sock->fd != INVALID_SOCKET) {
+        FD_CLR(sock->fd, &self->handles);
+    }
+}
+
 int
 Handleset_waitReady(HandleSet self, unsigned int timeoutMs)
 {
    int result;
 
-   if (self != NULL && self->maxHandle >= 0) {
+   if ((self != NULL) && (self->maxHandle >= 0)) {
        struct timeval timeout;
 
        timeout.tv_sec = timeoutMs / 1000;
        timeout.tv_usec = (timeoutMs % 1000) * 1000;
-       result = select(self->maxHandle + 1, &self->handles, NULL, NULL, &timeout);
+
+       fd_set handles;
+
+       memcpy((void*)&handles, &(self->handles), sizeof(fd_set));
+
+       result = select(self->maxHandle + 1, &handles, NULL, NULL, &timeout);
    } else {
        result = -1;
    }
@@ -156,18 +169,18 @@ static bool
 prepareServerAddress(const char* address, int port, struct sockaddr_in* sockaddr)
 {
 
-	memset((char *) sockaddr , 0, sizeof(struct sockaddr_in));
+    memset((char *) sockaddr , 0, sizeof(struct sockaddr_in));
 
-	if (address != NULL) {
-		struct hostent *server;
-		server = gethostbyname(address);
+    if (address != NULL) {
+        struct hostent *server;
+        server = gethostbyname(address);
 
-		if (server == NULL) return false;
+        if (server == NULL) return false;
 
-		memcpy((char *) &sockaddr->sin_addr.s_addr, (char *) server->h_addr, server->h_length);
-	}
-	else
-		sockaddr->sin_addr.s_addr = htonl(INADDR_ANY);
+        memcpy((char *) &sockaddr->sin_addr.s_addr, (char *) server->h_addr, server->h_length);
+    }
+    else
+        sockaddr->sin_addr.s_addr = htonl(INADDR_ANY);
 
     sockaddr->sin_family = AF_INET;
     sockaddr->sin_port = htons(port);
@@ -177,140 +190,167 @@ prepareServerAddress(const char* address, int port, struct sockaddr_in* sockaddr
 
 static bool wsaStartUp()
 {
-	if (wsaStartupCalled == false) {
-		int ec;
-		WSADATA wsa;
+    if (wsaStartupCalled == false) {
+        int ec;
+        WSADATA wsa;
 
-		if ((ec = WSAStartup(MAKEWORD(2, 0), &wsa)) != 0) {
-			if (DEBUG_SOCKET)
-				printf("WIN32_SOCKET: winsock error: code %i\n", ec);
-			return false;
-		}
-		else {
-			wsaStartupCalled = true;
-			return true;
-		}
-			
-	}
-	else
-		return true;
+        if ((ec = WSAStartup(MAKEWORD(2, 0), &wsa)) != 0) {
+            if (DEBUG_SOCKET)
+                printf("WIN32_SOCKET: winsock error: code %i\n", ec);
+            return false;
+        }
+        else {
+            wsaStartupCalled = true;
+            return true;
+        }
+            
+    }
+    else
+        return true;
 }
 
 static void wsaShutdown()
 {
-	if (wsaStartupCalled) {
-		if (socketCount == 0) {
-			WSACleanup();
-			wsaStartupCalled = false;
-		}
+    if (wsaStartupCalled) {
+        if (socketCount == 0) {
+            WSACleanup();
+            wsaStartupCalled = false;
+        }
 
-	}
+    }
 }
 
 ServerSocket
 TcpServerSocket_create(const char* address, int port)
 {
-	ServerSocket serverSocket = NULL;
-	int ec;
-	SOCKET listen_socket = INVALID_SOCKET;
+    ServerSocket serverSocket = NULL;
+    int ec;
+    SOCKET listen_socket = INVALID_SOCKET;
 
-	if (wsaStartUp() == false)
-		return NULL;
+    if (wsaStartUp() == false)
+        return NULL;
 
-	struct sockaddr_in server_addr;
+    struct sockaddr_in server_addr;
 
-	if (!prepareServerAddress(address, port, &server_addr))
-	    return NULL;
+    if (!prepareServerAddress(address, port, &server_addr))
+        return NULL;
 
-	listen_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    listen_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
-	if (listen_socket == INVALID_SOCKET) {
-	    if (DEBUG_SOCKET)
-	        printf("WIN32_SOCKET: socket failed with error: %i\n", WSAGetLastError());
+    if (listen_socket == INVALID_SOCKET) {
+        if (DEBUG_SOCKET)
+            printf("WIN32_SOCKET: socket failed with error: %i\n", WSAGetLastError());
 
-		wsaShutdown();
+        wsaShutdown();
 
-		return NULL;
-	}
+        return NULL;
+    }
 
-	int optionReuseAddr = 1;
-	setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&optionReuseAddr, sizeof(int));
+    int optionReuseAddr = 1;
+    setsockopt(listen_socket, SOL_SOCKET, SO_REUSEADDR, (char *)&optionReuseAddr, sizeof(int));
 
-	ec = bind(listen_socket, (struct sockaddr*)&server_addr, sizeof(server_addr));
+    ec = bind(listen_socket, (struct sockaddr*)&server_addr, sizeof(server_addr));
 
-	if (ec == SOCKET_ERROR) {
-	    if (DEBUG_SOCKET)
-	        printf("WIN32_SOCKET: bind failed with error:%i\n", WSAGetLastError());
-		closesocket(listen_socket);
+    if (ec == SOCKET_ERROR) {
+        if (DEBUG_SOCKET)
+            printf("WIN32_SOCKET: bind failed with error:%i\n", WSAGetLastError());
+        closesocket(listen_socket);
 
-		wsaShutdown();
+        wsaShutdown();
 
-		return NULL;
-	}
+        return NULL;
+    }
 
-	serverSocket = (ServerSocket) GLOBAL_MALLOC(sizeof(struct sServerSocket));
+    serverSocket = (ServerSocket) GLOBAL_MALLOC(sizeof(struct sServerSocket));
 
-	serverSocket->fd = listen_socket;
-	serverSocket->backLog = 10;
+    serverSocket->fd = listen_socket;
+    serverSocket->backLog = 10;
 
     setSocketNonBlocking((Socket) serverSocket);
 
-	socketCount++;
+    socketCount++;
 
-	return serverSocket;
+    return serverSocket;
 }
 
 void
 ServerSocket_listen(ServerSocket self)
 {
-	listen(self->fd, self->backLog);
+    listen(self->fd, self->backLog);
 }
 
 Socket
 ServerSocket_accept(ServerSocket self)
 {
-	int fd;
+    int fd;
 
-	Socket conSocket = NULL;
+    Socket conSocket = NULL;
 
-	fd = accept(self->fd, NULL, NULL);
+    fd = accept(self->fd, NULL, NULL);
 
-	if (fd >= 0) {
-		conSocket = TcpSocket_create();
-		conSocket->fd = fd;
+    if (fd >= 0) {
+        conSocket = (Socket) GLOBAL_CALLOC(1, sizeof(struct sSocket));
+        conSocket->fd = fd;
 
-	    setSocketNonBlocking(conSocket);
-	}
+        socketCount++;
 
-	return conSocket;
+        setSocketNonBlocking(conSocket);
+
+        if (DEBUG_SOCKET)
+            printf("WIN32_SOCKET: connection accepted\n");
+    }
+    else {
+        if (DEBUG_SOCKET)
+            printf("WIN32_SOCKET: accept failed\n");
+    }
+
+    return conSocket;
 }
 
 void
 ServerSocket_setBacklog(ServerSocket self, int backlog)
 {
-	self->backLog = backlog;
+    self->backLog = backlog;
 }
 
 void
 ServerSocket_destroy(ServerSocket self)
 {
-	closesocket(self->fd);
-	socketCount--;
-	wsaShutdown();
-	GLOBAL_FREEMEM(self);
+    if (self->fd != INVALID_SOCKET) {
+        shutdown(self->fd, 2);
+        closesocket(self->fd);
+        socketCount--;
+        self->fd = INVALID_SOCKET;
+    }
+
+    wsaShutdown();
+    GLOBAL_FREEMEM(self);
 }
 
 Socket
 TcpSocket_create()
 {
-	Socket self = (Socket) GLOBAL_MALLOC(sizeof(struct sSocket));
+    Socket self = NULL;
 
-	self->fd = INVALID_SOCKET;
-	self->connectTimeout = 5000;
+    if (wsaStartUp() == false)
+        return NULL;
 
-	socketCount++;
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
 
-	return self;
+    if (sock != INVALID_SOCKET) {
+        self = (Socket) GLOBAL_MALLOC(sizeof(struct sSocket));
+
+        self->fd = sock;
+        self->connectTimeout = 5000;
+
+        socketCount++;
+    }
+    else {
+        if (DEBUG_SOCKET)
+            printf("WIN32_SOCKET: failed to create socket (error code=%i)\n", WSAGetLastError());
+    }
+
+    return self;
 }
 
 void
@@ -323,7 +363,7 @@ bool
 Socket_connectAsync(Socket self, const char* address, int port)
 {
     if (DEBUG_SOCKET)
-        printf("Socket_connect: %s:%i\n", address, port);
+        printf("WIN32_SOCKET: Socket_connect: %s:%i\n", address, port);
 
     struct sockaddr_in serverAddress;
     WSADATA wsa;
@@ -335,17 +375,14 @@ Socket_connectAsync(Socket self, const char* address, int port)
         return false;
     }
 
-
-
     if (!prepareServerAddress(address, port, &serverAddress))
         return false;
-
-    self->fd = socket(AF_INET, SOCK_STREAM, 0);
 
     setSocketNonBlocking(self);
 
     if (connect(self->fd, (struct sockaddr *) &serverAddress, sizeof(serverAddress)) == SOCKET_ERROR) {
         if (WSAGetLastError() != WSAEWOULDBLOCK) {
+            closesocket(self->fd);
             self->fd = INVALID_SOCKET;
             return false;
         }
@@ -393,15 +430,10 @@ Socket_checkAsyncConnectState(Socket self)
 bool
 Socket_connect(Socket self, const char* address, int port)
 {
-	struct sockaddr_in serverAddress;
+    struct sockaddr_in serverAddress;
 
-	if (wsaStartUp() == false)
-		return false;
-
-	if (!prepareServerAddress(address, port, &serverAddress))
-	    return false;
-
-	self->fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (!prepareServerAddress(address, port, &serverAddress))
+        return false;
 
     setSocketNonBlocking(self);
 
@@ -424,47 +456,69 @@ Socket_connect(Socket self, const char* address, int port)
         return true;
 }
 
-char*
-Socket_getPeerAddress(Socket self)
+static char*
+convertAddressToStr(struct sockaddr_storage* addr)
 {
-	struct sockaddr_storage addr;
-	int addrLen = sizeof(addr);
+    char addrString[INET6_ADDRSTRLEN + 7];
+    int addrStringLen = INET6_ADDRSTRLEN + 7;
+    int port;
 
-	getpeername(self->fd, (struct sockaddr*) &addr, &addrLen);
+    bool isIPv6;
 
-	char addrString[INET6_ADDRSTRLEN + 7];
-	int addrStringLen = INET6_ADDRSTRLEN + 7;
-	int port;
+    if (addr->ss_family == AF_INET)  {
+        struct sockaddr_in* ipv4Addr = (struct sockaddr_in*) addr;
+        port = ntohs(ipv4Addr->sin_port);
+        ipv4Addr->sin_port = 0;
+        WSAAddressToString((LPSOCKADDR) ipv4Addr, sizeof(struct sockaddr_storage), NULL,
+            (LPSTR) addrString, (LPDWORD) &addrStringLen);
+        isIPv6 = false;
+    }
+    else if (addr->ss_family == AF_INET6){
+        struct sockaddr_in6* ipv6Addr = (struct sockaddr_in6*) addr;
+        port = ntohs(ipv6Addr->sin6_port);
+        ipv6Addr->sin6_port = 0;
+        WSAAddressToString((LPSOCKADDR) ipv6Addr, sizeof(struct sockaddr_storage), NULL,
+            (LPSTR) addrString, (LPDWORD) &addrStringLen);
+        isIPv6 = true;
+    }
+    else
+        return NULL;
 
-	bool isIPv6;
-
-	if (addr.ss_family == AF_INET)  {
-		struct sockaddr_in* ipv4Addr = (struct sockaddr_in*) &addr;
-		port = ntohs(ipv4Addr->sin_port);
-		ipv4Addr->sin_port = 0;
-		WSAAddressToString((LPSOCKADDR) ipv4Addr, sizeof(struct sockaddr_storage), NULL, 
-			(LPSTR) addrString, (LPDWORD) &addrStringLen);
-		isIPv6 = false;
-	}
-	else if (addr.ss_family == AF_INET6){
-		struct sockaddr_in6* ipv6Addr = (struct sockaddr_in6*) &addr;
-		port = ntohs(ipv6Addr->sin6_port);
-		ipv6Addr->sin6_port = 0;
-		WSAAddressToString((LPSOCKADDR) ipv6Addr, sizeof(struct sockaddr_storage), NULL, 
-			(LPSTR) addrString, (LPDWORD) &addrStringLen);
-		isIPv6 = true;
-	}
-	else
-		return NULL;
-
-	char* clientConnection = (char*) GLOBAL_MALLOC(strlen(addrString) + 9);
+    char* clientConnection = (char*) GLOBAL_MALLOC(strlen(addrString) + 9);
 
     if (isIPv6)
         sprintf(clientConnection, "[%s]:%i", addrString, port);
     else
         sprintf(clientConnection, "%s:%i", addrString, port);
 
-	return clientConnection;
+    return clientConnection;
+}
+
+
+char*
+Socket_getPeerAddress(Socket self)
+{
+    struct sockaddr_storage addr;
+    socklen_t addrLen = sizeof(addr);
+
+    if (getpeername(self->fd, (struct sockaddr*) &addr, &addrLen) == 0) {
+        return convertAddressToStr(&addr);
+    }
+    else
+        return NULL;
+}
+
+char*
+Socket_getLocalAddress(Socket self)
+{
+    struct sockaddr_storage addr;
+    socklen_t addrLen = sizeof(addr);
+
+    if (getsockname(self->fd, (struct sockaddr*) &addr, &addrLen) == 0) {
+        return convertAddressToStr(&addr);
+    }
+    else
+        return NULL;
 }
 
 char*
@@ -523,7 +577,7 @@ Socket_read(Socket self, uint8_t* buf, int size)
             return -1;
     }
 
-	return bytes_read;
+    return bytes_read;
 }
 
 int
@@ -540,18 +594,22 @@ Socket_write(Socket self, uint8_t* buf, int size)
             bytes_sent = -1;
     }
 
-	return bytes_sent;
+    return bytes_sent;
 }
 
 void
 Socket_destroy(Socket self)
 {
-	if (self->fd != INVALID_SOCKET) {
-		closesocket(self->fd);
-	}
+    if (self->fd != INVALID_SOCKET) {
+        shutdown(self->fd, 2);
+        closesocket(self->fd);
 
-	socketCount--;
-	wsaShutdown();
+        self->fd = INVALID_SOCKET;
 
-	GLOBAL_FREEMEM(self);
+        socketCount--;
+    }
+
+    wsaShutdown();
+
+    GLOBAL_FREEMEM(self);
 }

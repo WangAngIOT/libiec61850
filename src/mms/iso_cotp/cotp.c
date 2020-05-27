@@ -48,13 +48,13 @@
 static bool
 addPayloadToBuffer(CotpConnection* self, uint8_t* buffer, int payloadLength);
 
-static inline uint16_t
+static uint16_t
 getUint16(uint8_t* buffer)
 {
     return (buffer[0] * 0x100) + buffer[1];
 }
 
-static inline uint8_t
+static uint8_t
 getUint8(uint8_t* buffer)
 {
     return buffer[0];
@@ -115,7 +115,7 @@ getOptionsLength(CotpConnection* self)
     return optionsLength;
 }
 
-static inline void
+static void
 writeStaticConnectResponseHeader(CotpConnection* self, int optionsLength)
 {
     /* always same size (7) and same position in buffer */
@@ -161,7 +161,7 @@ writeDataTpduHeader(CotpConnection* self, int isLastUnit)
     self->writeBuffer->size = 7;
 }
 
-static inline int
+static int
 writeToSocket(CotpConnection* self, uint8_t* buf, int size)
 {
 #if (CONFIG_MMS_SUPPORT_TLS == 1)
@@ -571,6 +571,13 @@ parseDataTpdu(CotpConnection* self, uint8_t* buffer, uint8_t len)
 static bool
 addPayloadToBuffer(CotpConnection* self, uint8_t* buffer,  int payloadLength)
 {
+    if (payloadLength < 1) {
+        if (DEBUG_COTP)
+            printf("COTP: missing payload\n");
+
+        return false;
+    }
+
     if (DEBUG_COTP)
         printf("COTP: add to payload buffer (cur size: %i, len: %i)\n", self->payload->size, payloadLength);
 
@@ -652,7 +659,7 @@ CotpConnection_resetPayload(CotpConnection* self)
 }
 
 
-static inline int
+static int
 readFromSocket(CotpConnection* self, uint8_t* buf, int size)
 {
 #if (CONFIG_MMS_SUPPORT_TLS == 1)

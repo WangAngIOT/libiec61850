@@ -1,7 +1,7 @@
 /*
  *  socket_linux.c
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2020 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -33,7 +33,14 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <netinet/tcp.h> /* required for TCP keepalive */
+#include <linux/version.h>
 
+#define _GNU_SOURCE
+#include <signal.h>
+#include <poll.h>
+
+
+#include "linked_list.h"
 #include "hal_thread.h"
 #include "lib_memory.h"
 
@@ -52,62 +59,118 @@ struct sServerSocket {
 };
 
 struct sHandleSet {
-   fd_set handles;
-   int maxHandle;
+    LinkedList sockets;
+    bool pollfdIsUpdated;
+    struct pollfd* fds;
+    int nfds;
 };
 
 HandleSet
 Handleset_new(void)
 {
-   HandleSet result = (HandleSet) GLOBAL_MALLOC(sizeof(struct sHandleSet));
+   HandleSet self = (HandleSet) GLOBAL_MALLOC(sizeof(struct sHandleSet));
 
-   if (result != NULL) {
-       FD_ZERO(&result->handles);
-       result->maxHandle = -1;
+   if (self) {
+       self->sockets = LinkedList_create();
+       self->pollfdIsUpdated = false;
+       self->fds = NULL;
+       self->nfds = 0;
    }
-   return result;
+
+   return self;
 }
 
 void
 Handleset_reset(HandleSet self)
 {
-    FD_ZERO(&self->handles);
-    self->maxHandle = -1;
+    if (self) {
+        if (self->sockets) {
+            LinkedList_destroyStatic(self->sockets);
+            self->sockets = LinkedList_create();
+            self->pollfdIsUpdated = false;
+        }
+    }
 }
 
 void
 Handleset_addSocket(HandleSet self, const Socket sock)
 {
    if (self != NULL && sock != NULL && sock->fd != -1) {
-       FD_SET(sock->fd, &self->handles);
-       if (sock->fd > self->maxHandle) {
-           self->maxHandle = sock->fd;
-       }
+
+       LinkedList_add(self->sockets, sock);
+       self->pollfdIsUpdated = false;
    }
+}
+
+void
+Handleset_removeSocket(HandleSet self, const Socket sock)
+{
+    if (self && self->sockets && sock) {
+        LinkedList_remove(self->sockets, sock);
+        self->pollfdIsUpdated = false;
+    }
 }
 
 int
 Handleset_waitReady(HandleSet self, unsigned int timeoutMs)
 {
-   int result;
+    /* check if pollfd array is updated */
+    if (self->pollfdIsUpdated == false) {
+        if (self->fds) {
+            GLOBAL_FREEMEM(self->fds);
+            self->fds = NULL;
+        }
 
-   if ((self != NULL) && (self->maxHandle >= 0)) {
-       struct timeval timeout;
+        self->nfds = LinkedList_size(self->sockets);
 
-       timeout.tv_sec = timeoutMs / 1000;
-       timeout.tv_usec = (timeoutMs % 1000) * 1000;
-       result = select(self->maxHandle + 1, &self->handles, NULL, NULL, &timeout);
-   } else {
-       result = -1;
-   }
+        self->fds = GLOBAL_CALLOC(self->nfds, sizeof(struct pollfd));
 
-   return result;
+        int i;
+
+        for (i = 0; i < self->nfds; i++) {
+            LinkedList sockElem = LinkedList_get(self->sockets, i);
+
+            if (sockElem) {
+                Socket sock = (Socket) LinkedList_getData(sockElem);
+
+                if (sock) {
+                    self->fds[i].fd = sock->fd;
+                    self->fds[i].events = POLL_IN;
+                }
+            }
+        }
+
+        self->pollfdIsUpdated = true;
+    }
+
+    if (self->fds && self->nfds > 0) {
+        int result = poll(self->fds, self->nfds, timeoutMs);
+
+        if (result == -1) {
+            if (DEBUG_SOCKET)
+                printf("SOCKET: poll error (errno: %i)\n", errno);
+        }
+
+        return result;
+    }
+    else {
+        /* there is no socket to wait for */
+        return 0;
+    }
 }
 
 void
 Handleset_destroy(HandleSet self)
 {
-   GLOBAL_FREEMEM(self);
+    if (self) {
+        if (self->sockets)
+            LinkedList_destroyStatic(self->sockets);
+
+        if (self->fds)
+            GLOBAL_FREEMEM(self->fds);
+
+        GLOBAL_FREEMEM(self);
+    }
 }
 
 void
@@ -118,17 +181,30 @@ Socket_activateTcpKeepAlive(Socket self, int idleTime, int interval, int count)
     socklen_t optlen = sizeof(optval);
 
     optval = 1;
-    setsockopt(self->fd, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen);
+
+    if (setsockopt(self->fd, SOL_SOCKET, SO_KEEPALIVE, &optval, optlen)) {
+        if (DEBUG_SOCKET)
+            printf("Failed to enable TCP keepalive\n");
+    }
 
 #if defined TCP_KEEPCNT
     optval = idleTime;
-    setsockopt(self->fd, IPPROTO_TCP, TCP_KEEPIDLE, &optval, optlen);
+    if (setsockopt(self->fd, IPPROTO_TCP, TCP_KEEPIDLE, &optval, optlen)) {
+        if (DEBUG_SOCKET)
+            printf("Failed to set TCP keepalive TCP_KEEPIDLE parameter\n");
+    }
 
     optval = interval;
-    setsockopt(self->fd, IPPROTO_TCP, TCP_KEEPINTVL, &optval, optlen);
+    if (setsockopt(self->fd, IPPROTO_TCP, TCP_KEEPINTVL, &optval, optlen)) {
+        if (DEBUG_SOCKET)
+            printf("Failed to set TCP keepalive TCP_KEEPINTVL parameter\n");
+    }
 
     optval = count;
-    setsockopt(self->fd, IPPROTO_TCP, TCP_KEEPCNT, &optval, optlen);
+    if (setsockopt(self->fd, IPPROTO_TCP, TCP_KEEPCNT, &optval, optlen)) {
+        if (DEBUG_SOCKET)
+            printf("Failed to set TCP keepalive TCP_KEEPCNT parameter\n");
+    }
 #endif /* TCP_KEEPCNT */
 
 #endif /* SO_KEEPALIVE */
@@ -201,10 +277,22 @@ TcpServerSocket_create(const char* address, int port)
         int optionReuseAddr = 1;
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *) &optionReuseAddr, sizeof(int));
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)
+        int tcpUserTimeout = 10000;
+        int result = setsockopt(fd, SOL_TCP,  TCP_USER_TIMEOUT, &tcpUserTimeout, sizeof(tcpUserTimeout));
+
+        if (result < 0) {
+            if (DEBUG_SOCKET)
+                printf("SOCKET: failed to set TCP_USER_TIMEOUT\n");
+        }
+#else
+#warning "TCP_USER_TIMEOUT not supported by linux kernel"
+#endif
+
         if (bind(fd, (struct sockaddr *) &serverAddress, sizeof(serverAddress)) >= 0) {
             serverSocket = (ServerSocket) GLOBAL_MALLOC(sizeof(struct sServerSocket));
             serverSocket->fd = fd;
-            serverSocket->backLog = 0;
+            serverSocket->backLog = 2;
 
             setSocketNonBlocking((Socket) serverSocket);
         }
@@ -223,7 +311,6 @@ ServerSocket_listen(ServerSocket self)
     listen(self->fd, self->backLog);
 }
 
-
 /* CHANGED TO MAKE NON-BLOCKING --> RETURNS NULL IF NO CONNECTION IS PENDING */
 Socket
 ServerSocket_accept(ServerSocket self)
@@ -235,7 +322,7 @@ ServerSocket_accept(ServerSocket self)
     fd = accept(self->fd, NULL, NULL );
 
     if (fd >= 0) {
-        conSocket = TcpSocket_create();
+        conSocket = (Socket) GLOBAL_CALLOC(1, sizeof(struct sSocket));
         conSocket->fd = fd;
 
         activateTcpNoDelay(conSocket);
@@ -282,10 +369,31 @@ ServerSocket_destroy(ServerSocket self)
 Socket
 TcpSocket_create()
 {
-    Socket self = (Socket) GLOBAL_MALLOC(sizeof(struct sSocket));
+    Socket self = NULL;
 
-    self->fd = -1;
-    self->connectTimeout = 5000;
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (sock != -1) {
+        self = (Socket) GLOBAL_MALLOC(sizeof(struct sSocket));
+
+        self->fd = sock;
+        self->connectTimeout = 5000;
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37)
+        int tcpUserTimeout = 10000;
+        int result = setsockopt(sock, SOL_TCP,  TCP_USER_TIMEOUT, &tcpUserTimeout, sizeof(tcpUserTimeout));
+
+        if (result < 0) {
+            if (DEBUG_SOCKET)
+                printf("SOCKET: failed to set TCP_USER_TIMEOUT\n");
+        }
+#endif
+
+    }
+    else {
+        if (DEBUG_SOCKET)
+            printf("SOCKET: failed to create socket (errno=%i)\n", errno);
+    }
 
     return self;
 }
@@ -303,12 +411,14 @@ Socket_connectAsync(Socket self, const char* address, int port)
     struct sockaddr_in serverAddress;
 
     if (DEBUG_SOCKET)
-        printf("Socket_connect: %s:%i\n", address, port);
+        printf("SOCKET: connect: %s:%i\n", address, port);
 
     if (!prepareServerAddress(address, port, &serverAddress))
         return false;
 
-    self->fd = socket(AF_INET, SOCK_STREAM, 0);
+    fd_set fdSet;
+    FD_ZERO(&fdSet);
+    FD_SET(self->fd, &fdSet);
 
     activateTcpNoDelay(self);
 
@@ -317,6 +427,11 @@ Socket_connectAsync(Socket self, const char* address, int port)
     if (connect(self->fd, (struct sockaddr *) &serverAddress, sizeof(serverAddress)) < 0) {
 
         if (errno != EINPROGRESS) {
+            if (close(self->fd) == -1) {
+                if (DEBUG_SOCKET)
+                    printf("SOCKET: failed to close socket (errno: %i)\n", errno);
+            }
+
             self->fd = -1;
             return false;
         }
@@ -396,27 +511,22 @@ Socket_connect(Socket self, const char* address, int port)
 }
 
 
-char*
-Socket_getPeerAddress(Socket self)
+static char*
+convertAddressToStr(struct sockaddr_storage* addr)
 {
-    struct sockaddr_storage addr;
-    socklen_t addrLen = sizeof(addr);
-
-    getpeername(self->fd, (struct sockaddr*) &addr, &addrLen);
-
     char addrString[INET6_ADDRSTRLEN + 7];
     int port;
 
     bool isIPv6;
 
-    if (addr.ss_family == AF_INET) {
-        struct sockaddr_in* ipv4Addr = (struct sockaddr_in*) &addr;
+    if (addr->ss_family == AF_INET) {
+        struct sockaddr_in* ipv4Addr = (struct sockaddr_in*) addr;
         port = ntohs(ipv4Addr->sin_port);
         inet_ntop(AF_INET, &(ipv4Addr->sin_addr), addrString, INET_ADDRSTRLEN);
         isIPv6 = false;
     }
-    else if (addr.ss_family == AF_INET6) {
-        struct sockaddr_in6* ipv6Addr = (struct sockaddr_in6*) &addr;
+    else if (addr->ss_family == AF_INET6) {
+        struct sockaddr_in6* ipv6Addr = (struct sockaddr_in6*) addr;
         port = ntohs(ipv6Addr->sin6_port);
         inet_ntop(AF_INET6, &(ipv6Addr->sin6_addr), addrString, INET6_ADDRSTRLEN);
         isIPv6 = true;
@@ -426,13 +536,38 @@ Socket_getPeerAddress(Socket self)
 
     char* clientConnection = (char*) GLOBAL_MALLOC(strlen(addrString) + 9);
 
-
     if (isIPv6)
         sprintf(clientConnection, "[%s]:%i", addrString, port);
     else
         sprintf(clientConnection, "%s:%i", addrString, port);
 
     return clientConnection;
+}
+
+char*
+Socket_getPeerAddress(Socket self)
+{
+    struct sockaddr_storage addr;
+    socklen_t addrLen = sizeof(addr);
+
+    if (getpeername(self->fd, (struct sockaddr*) &addr, &addrLen) == 0) {
+        return convertAddressToStr(&addr);
+    }
+    else
+        return NULL;
+}
+
+char*
+Socket_getLocalAddress(Socket self)
+{
+    struct sockaddr_storage addr;
+    socklen_t addrLen = sizeof(addr);
+
+    if (getsockname(self->fd, (struct sockaddr*) &addr, &addrLen) == 0) {
+        return convertAddressToStr(&addr);
+    }
+    else
+        return NULL;
 }
 
 char*
@@ -489,10 +624,12 @@ Socket_read(Socket self, uint8_t* buf, int size)
 
             case EAGAIN:
                 return 0;
-            case EBADF:
-                return -1;
 
             default:
+
+                if (DEBUG_SOCKET)
+                    printf("DEBUG_SOCKET: recv returned error (errno=%i)\n", error);
+
                 return -1;
         }
     }
@@ -507,7 +644,19 @@ Socket_write(Socket self, uint8_t* buf, int size)
         return -1;
 
     /* MSG_NOSIGNAL - prevent send to signal SIGPIPE when peer unexpectedly closed the socket */
-    return send(self->fd, buf, size, MSG_NOSIGNAL);
+    int retVal = send(self->fd, buf, size, MSG_NOSIGNAL);
+
+    if (retVal == -1) {
+        if (errno == EAGAIN) {
+            return 0;
+        }
+        else {
+            if (DEBUG_SOCKET)
+                printf("DEBUG_SOCKET: send returned error (errno=%i)\n", errno);
+        }
+    }
+
+    return retVal;
 }
 
 void

@@ -48,7 +48,7 @@
 struct sGooseReceiver
 {
     bool running;
-    bool stopped;
+    bool stop;
     char* interfaceId;
     uint8_t* buffer;
     EthernetSocket ethSocket;
@@ -59,19 +59,32 @@ struct sGooseReceiver
 };
 
 GooseReceiver
-GooseReceiver_create()
+GooseReceiver_createEx(uint8_t* buffer)
 {
     GooseReceiver self = (GooseReceiver) GLOBAL_MALLOC(sizeof(struct sGooseReceiver));
 
     if (self != NULL) {
         self->running = false;
+        self->stop = false;
         self->interfaceId = NULL;
-        self->buffer = (uint8_t*) GLOBAL_MALLOC(ETH_BUFFER_LENGTH);
+        self->buffer = buffer;
         self->ethSocket = NULL;
         self->subscriberList = LinkedList_create();
 #if (CONFIG_MMS_THREADLESS_STACK == 0)
         self->thread = NULL;
 #endif
+    }
+
+    return self;
+}
+
+GooseReceiver
+GooseReceiver_create()
+{
+    GooseReceiver self = GooseReceiver_createEx(NULL);
+
+    if (self) {
+        self->buffer = (uint8_t*) GLOBAL_MALLOC(ETH_BUFFER_LENGTH);
     }
 
     return self;
@@ -96,6 +109,15 @@ GooseReceiver_setInterfaceId(GooseReceiver self, const char* interfaceId)
         GLOBAL_FREEMEM(self->interfaceId);
 
     self->interfaceId = StringUtils_copyString(interfaceId);
+}
+
+const char*
+GooseReceiver_getInterfaceId(GooseReceiver self)
+{
+    if (self->interfaceId)
+        return self->interfaceId;
+    else
+        return CONFIG_ETHERNET_INTERFACE_ID;
 }
 
 static void
@@ -132,12 +154,6 @@ parseAllData(uint8_t* buffer, int allDataLength, MmsValue* dataSetValues)
         if (bufPos < 0) {
             if (DEBUG_GOOSE_SUBSCRIBER)
                 printf("GOOSE_SUBSCRIBER: Malformed message: failed to decode BER length tag!\n");
-            return 0;
-        }
-
-        if (bufPos + elementLength > allDataLength) {
-            if (DEBUG_GOOSE_SUBSCRIBER)
-                printf("GOOSE_SUBSCRIBER: Malformed message: sub element is too large!\n");
             return 0;
         }
 
@@ -306,12 +322,6 @@ parseAllDataUnknownValue(GooseSubscriber self, uint8_t* buffer, int allDataLengt
             return 0;
         }
 
-        if (bufPos + elementLength > allDataLength) {
-            if (DEBUG_GOOSE_SUBSCRIBER)
-                printf("GOOSE_SUBSCRIBER: Malformed message: sub element is too large!\n");
-            goto exit_with_error;
-        }
-
         switch (tag)
         {
         case 0x80: /* reserved for access result */
@@ -365,12 +375,6 @@ parseAllDataUnknownValue(GooseSubscriber self, uint8_t* buffer, int allDataLengt
             if (DEBUG_GOOSE_SUBSCRIBER)
                 printf("GOOSE_SUBSCRIBER: Malformed message: failed to decode BER length tag!\n");
             return 0;
-        }
-
-        if (bufPos + elementLength > allDataLength) {
-            if (DEBUG_GOOSE_SUBSCRIBER)
-                printf("GOOSE_SUBSCRIBER: Malformed message: sub element is too large!\n");
-            goto exit_with_error;
         }
 
         MmsValue* value = NULL;
@@ -530,13 +534,6 @@ parseGoosePayload(GooseReceiver self, uint8_t* buffer, int apduLength)
                 return 0;
             }
 
-            if (bufPos + elementLength > apduLength) {
-                if (DEBUG_GOOSE_SUBSCRIBER)
-                    printf("GOOSE_SUBSCRIBER: Malformed message: sub element is too large!\n");
-
-                goto exit_with_fault;
-            }
-
             if (bufPos == -1)
                 goto exit_with_fault;
 
@@ -653,7 +650,15 @@ parseGoosePayload(GooseReceiver self, uint8_t* buffer, int apduLength)
             matchingSubscriber->confRev = confRev;
             matchingSubscriber->ndsCom = ndsCom;
             matchingSubscriber->simulation = simulation;
-            MmsValue_setUtcTimeByBuffer(matchingSubscriber->timestamp, timestampBufPos);
+
+            if (timestampBufPos)
+                MmsValue_setUtcTimeByBuffer(matchingSubscriber->timestamp, timestampBufPos);
+            else {
+                if (DEBUG_GOOSE_SUBSCRIBER)
+                    printf("GOOSE_SUBSCRIBER: GOOSE message has no time stamp\n");
+
+                MmsValue_setUtcTime(matchingSubscriber->timestamp, 0);
+            }
 
             if (matchingSubscriber->dataSetValues == NULL)
                 matchingSubscriber->dataSetValues = parseAllDataUnknownValue(matchingSubscriber, dataSetBufferAddress, dataSetBufferLength, false);
@@ -684,18 +689,17 @@ parseGoosePayload(GooseReceiver self, uint8_t* buffer, int apduLength)
         return 0;
     }
 
-    exit_with_fault:
+exit_with_fault:
     if (DEBUG_GOOSE_SUBSCRIBER)
         printf("GOOSE_SUBSCRIBER: Invalid goose payload\n");
     return -1;
 }
 
 static void
-parseGooseMessage(GooseReceiver self, int numbytes)
+parseGooseMessage(GooseReceiver self, uint8_t* buffer, int numbytes)
 {
     int bufPos;
     bool subscriberFound = false;
-    uint8_t* buffer = self->buffer;
 
     if (numbytes < 22)
         return;
@@ -772,23 +776,19 @@ gooseReceiverLoop(void* threadParameter)
 {
     GooseReceiver self = (GooseReceiver) threadParameter;
 
-    self->running = true;
-    self->stopped = false;
-
-    GooseReceiver_startThreadless(self);
-
     if (self->running) {
 
         while (self->running) {
 
             if (GooseReceiver_tick(self) == false)
                 Thread_sleep(1);
+
+            if (self->stop)
+                break;
         }
 
         GooseReceiver_stopThreadless(self);
     }
-
-    self->stopped = true;
 }
 #endif
 
@@ -797,17 +797,19 @@ void
 GooseReceiver_start(GooseReceiver self)
 {
 #if (CONFIG_MMS_THREADLESS_STACK == 0)
-    self->thread = Thread_create((ThreadExecutionFunction) gooseReceiverLoop, (void*) self, false);
+    if (GooseReceiver_startThreadless(self)) {
+        self->thread = Thread_create((ThreadExecutionFunction) gooseReceiverLoop, (void*) self, false);
 
-    if (self->thread != NULL) {
-        if (DEBUG_GOOSE_SUBSCRIBER)
-            printf("GOOSE_SUBSCRIBER: GOOSE receiver started for interface %s\n", self->interfaceId);
+        if (self->thread != NULL) {
+            if (DEBUG_GOOSE_SUBSCRIBER)
+                printf("GOOSE_SUBSCRIBER: GOOSE receiver started for interface %s\n", self->interfaceId);
 
-        Thread_start(self->thread);
-    }
-    else {
-        if (DEBUG_GOOSE_SUBSCRIBER)
-            printf("GOOSE_SUBSCRIBER: Starting GOOSE receiver failed for interface %s\n", self->interfaceId);
+            Thread_start(self->thread);
+        }
+        else {
+            if (DEBUG_GOOSE_SUBSCRIBER)
+                printf("GOOSE_SUBSCRIBER: Starting GOOSE receiver failed for interface %s\n", self->interfaceId);
+        }
     }
 #endif
 }
@@ -822,12 +824,13 @@ void
 GooseReceiver_stop(GooseReceiver self)
 {
 #if (CONFIG_MMS_THREADLESS_STACK == 0)
+    self->stop = true;
     self->running = false;
 
-    Thread_destroy(self->thread);
+    if (self->thread)
+        Thread_destroy(self->thread);
 
-    while (self->stopped == false)
-        Thread_sleep(1);
+    self->stop = false;
 #endif
 }
 
@@ -886,9 +889,15 @@ GooseReceiver_tick(GooseReceiver self)
     int packetSize = Ethernet_receivePacket(self->ethSocket, self->buffer, ETH_BUFFER_LENGTH);
 
     if (packetSize > 0) {
-        parseGooseMessage(self, packetSize);
+        parseGooseMessage(self, self->buffer, packetSize);
         return true;
     }
     else
         return false;
+}
+
+void
+GooseReceiver_handleMessage(GooseReceiver self, uint8_t* buffer, int size)
+{
+    parseGooseMessage(self, buffer, size);
 }

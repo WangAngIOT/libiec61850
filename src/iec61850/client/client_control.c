@@ -56,6 +56,8 @@ struct sControlObjectClient
     uint64_t constantT; /* timestamp of select/operate to be used when constant T option is selected */
 
     LastApplError lastApplError;
+    MmsError lastMmsError;
+    MmsDataAccessError lastAccessError; /* last error of read or write command */
 
     CommandTerminationHandler commandTerminationHandler;
     void* commandTerminaionHandlerParameter;
@@ -71,7 +73,7 @@ struct sControlObjectClient
 static void
 convertToMmsAndInsertFC(char* newItemId, const char* originalObjectName, const char* fc)
 {
-    int originalLength = strlen(originalObjectName);
+    int originalLength = (int) strlen(originalObjectName);
 
     int srcIndex = 0;
     int dstIndex = 0;
@@ -104,7 +106,7 @@ convertToMmsAndInsertFC(char* newItemId, const char* originalObjectName, const c
 static void
 resetLastApplError(ControlObjectClient self)
 {
-    self->lastApplError.error = 0;
+    self->lastApplError.error = CONTROL_ERROR_NO_ERROR;
     self->lastApplError.addCause = ADD_CAUSE_UNKNOWN;
     self->lastApplError.ctlNum = 0;
 }
@@ -212,7 +214,7 @@ ControlObjectClient_create(const char* objectReference, IedConnection connection
     /* request control model from server */
     char reference[129];
 
-    if (strlen(objectReference) < 121) {
+    if (strlen(objectReference) < 120) {
         strcpy(reference, objectReference);
         strcat(reference, ".ctlModel");
     }
@@ -310,6 +312,15 @@ ControlObjectClient_getCtlValType(ControlObjectClient self)
         return MmsValue_getType(self->analogValue);
     else
         return MmsValue_getType(self->ctlVal);
+}
+
+IedClientError
+ControlObjectClient_getLastError(ControlObjectClient self)
+{
+    if (self->lastAccessError != DATA_ACCESS_ERROR_SUCCESS)
+        return iedConnection_mapDataAccessErrorToIedError(self->lastAccessError);
+    else
+        return iedConnection_mapMmsErrorToIedError(self->lastMmsError);
 }
 
 void
@@ -494,11 +505,14 @@ ControlObjectClient_operate(ControlObjectClient self, MmsValue* ctlVal, uint64_t
 
     MmsError mmsError;
 
-    MmsConnection_writeVariable(IedConnection_getMmsConnection(self->connection),
+    MmsDataAccessError writeResult = MmsConnection_writeVariable(IedConnection_getMmsConnection(self->connection),
             &mmsError, domainId, itemId, operParameters);
 
     MmsValue_setElement(operParameters, 0, NULL);
     MmsValue_delete(operParameters);
+
+    self->lastMmsError = mmsError;
+    self->lastAccessError = writeResult;
 
     if (mmsError != MMS_ERROR_NONE) {
         if (DEBUG_IED_CLIENT)
@@ -534,6 +548,9 @@ internalOperateHandler(uint32_t invokeId, void* parameter, MmsError err, MmsData
         IedClientError iedError = iedConnection_mapMmsErrorToIedError(err);
 
         bool success = false;
+
+        self->lastMmsError = err;
+        self->lastAccessError = accessError;
 
         if (iedError == IED_ERROR_OK) {
             iedError = iedConnection_mapDataAccessErrorToIedError(accessError);
@@ -718,6 +735,9 @@ ControlObjectClient_selectWithValue(ControlObjectClient self, MmsValue* ctlVal)
     MmsValue_setElement(selValParameters, 0, NULL);
     MmsValue_delete(selValParameters);
 
+    self->lastMmsError = mmsError;
+    self->lastAccessError = writeResult;
+
     if (mmsError != MMS_ERROR_NONE) {
         if (DEBUG_IED_CLIENT)
             printf("IED_CLIENT: select-with-value failed!\n");
@@ -753,6 +773,9 @@ internalSelWithValHandler(uint32_t invokeId, void* parameter, MmsError err, MmsD
         IedClientError iedError = iedConnection_mapMmsErrorToIedError(err);
 
         bool success = false;
+
+        self->lastMmsError = err;
+        self->lastAccessError = accessError;
 
         if (iedError == IED_ERROR_OK) {
             iedError = iedConnection_mapDataAccessErrorToIedError(accessError);
@@ -869,6 +892,9 @@ ControlObjectClient_select(ControlObjectClient self)
 
     self->ctlNum++;
 
+    self->lastMmsError = mmsError;
+    self->lastAccessError = DATA_ACCESS_ERROR_SUCCESS;
+
     if (value == NULL) {
         if (DEBUG_IED_CLIENT)
             printf("IED_CLIENT: select: read SBO failed!\n");
@@ -885,6 +911,12 @@ ControlObjectClient_select(ControlObjectClient self)
                 printf("select-response+: (%s)\n", MmsValue_toString(value));
             selected = true;
         }
+    }
+    else if (MmsValue_getType(value) == MMS_DATA_ACCESS_ERROR) {
+        self->lastAccessError = MmsValue_getDataAccessError(value);
+
+        if (DEBUG_IED_CLIENT)
+            printf("IED_CLIENT: select returned data-access-error: %i\n", self->lastAccessError);
     }
     else {
         if (DEBUG_IED_CLIENT)
@@ -912,12 +944,17 @@ internalSelectHandler(uint32_t invokeId, void* parameter, MmsError err, MmsValue
 
         bool success = false;
 
+        self->lastMmsError = err;
+        self->lastAccessError = DATA_ACCESS_ERROR_SUCCESS;
+
         self->ctlNum++;
 
         if (iedError == IED_ERROR_OK) {
 
             if (MmsValue_getType(value) == MMS_DATA_ACCESS_ERROR) {
-                iedError = iedConnection_mapDataAccessErrorToIedError(MmsValue_getDataAccessError(value));
+                MmsDataAccessError dataAccessError = MmsValue_getDataAccessError(value);
+                self->lastAccessError = dataAccessError;
+                iedError = iedConnection_mapDataAccessErrorToIedError(dataAccessError);
             }
             else if (MmsValue_getType(value) == MMS_VISIBLE_STRING) {
 
@@ -954,6 +991,8 @@ internalSelectHandler(uint32_t invokeId, void* parameter, MmsError err, MmsValue
         if (DEBUG_IED_CLIENT)
             printf("IED_CLIENT: internal error - no matching outstanding call!\n");
     }
+
+    MmsValue_delete(value);
 }
 
 uint32_t
@@ -1068,6 +1107,9 @@ ControlObjectClient_cancel(ControlObjectClient self)
     MmsDataAccessError writeResult = MmsConnection_writeVariable(IedConnection_getMmsConnection(self->connection),
             &mmsError, domainId, itemId, cancelParameters);
 
+    self->lastMmsError = mmsError;
+    self->lastAccessError = writeResult;
+
     MmsValue_setElement(cancelParameters, 0, NULL);
     MmsValue_delete(cancelParameters);
 
@@ -1101,6 +1143,9 @@ internalCancelHandler(uint32_t invokeId, void* parameter, MmsError err, MmsDataA
         IedClientError iedError = iedConnection_mapMmsErrorToIedError(err);
 
         bool success = false;
+
+        self->lastMmsError = err;
+        self->lastAccessError = accessError;
 
         if (iedError == IED_ERROR_OK) {
             iedError = iedConnection_mapDataAccessErrorToIedError(accessError);

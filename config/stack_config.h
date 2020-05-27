@@ -68,9 +68,6 @@
 /* maximum COTP (ISO 8073) TPDU size - valid range is 1024 - 8192 */
 #define CONFIG_COTP_MAX_TPDU_SIZE 8192
 
-/* timeout while reading from TCP stream in ms */
-#define CONFIG_TCP_READ_TIMEOUT_MS 1000
-
 /* Ethernet interface ID for GOOSE and SV */
 #define CONFIG_ETHERNET_INTERFACE_ID "eth0"
 //#define CONFIG_ETHERNET_INTERFACE_ID "vboxnet0"
@@ -147,7 +144,10 @@
 #define CONFIG_IEC61850_REPORT_SERVICE 1
 
 /* support buffered report control blocks with ResvTms field */
-#define CONFIG_IEC61850_BRCB_WITH_RESVTMS 0
+#define CONFIG_IEC61850_BRCB_WITH_RESVTMS 1
+
+/* allow only configured clients (when pre-configured by ClientLN) - note behavior in PIXIT Rp13 */
+#define CONFIG_IEC61850_RCB_ALLOW_ONLY_PRECONFIGURED_CLIENT 0
 
 /* The default buffer size of buffered RCBs in bytes */
 #define CONFIG_REPORTING_DEFAULT_REPORT_BUFFER_SIZE 65536
@@ -163,6 +163,9 @@
 
 /* allow user to control read access by callback */
 #define CONFIG_IEC61850_SUPPORT_USER_READ_ACCESS_CONTROL 1
+
+/* allow application to set server identity (for MMS identity service) at runtime */
+#define CONFIG_IEC61850_SUPPORT_SERVER_IDENTITY 1
 
 /* Force memory alignment - required for some platforms (required more memory for buffered reporting) */
 #define CONFIG_IEC61850_FORCE_MEMORY_ALIGNMENT 1

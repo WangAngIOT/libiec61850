@@ -77,6 +77,7 @@ struct sIsoClientConnection
     volatile int state;
     Semaphore stateMutex;
 
+    uint32_t readTimeoutInMs; /* read timeout in ms */
     uint64_t nextReadTimeout; /* timeout value for read and connect */
 
     Socket socket;
@@ -128,13 +129,13 @@ getState(IsoClientConnection self)
     return stateVal;
 }
 
-static inline void
+static void
 setIntState(IsoClientConnection self, eIsoClientInternalState newState)
 {
     self->intState = newState;
 }
 
-static inline eIsoClientInternalState
+static eIsoClientInternalState
 getIntState(IsoClientConnection self)
 {
     return self->intState;
@@ -200,6 +201,8 @@ sendConnectionRequestMessage(IsoClientConnection self)
 
 #if (CONFIG_MMS_SUPPORT_TLS == 1)
     if (self->parameters->tlsConfiguration) {
+
+        TLSConfiguration_setClientMode(self->parameters->tlsConfiguration);
 
         /* create TLSSocket and start TLS authentication */
         TLSSocket tlsSocket = TLSSocket_create(self->socket, self->parameters->tlsConfiguration, false);
@@ -320,7 +323,7 @@ IsoClientConnection_handleConnection(IsoClientConnection self)
 
             if (socketState == SOCKET_STATE_CONNECTED) {
                 if (sendConnectionRequestMessage(self)) {
-                    self->nextReadTimeout = Hal_getTimeInMs() + CONFIG_TCP_READ_TIMEOUT_MS;
+                    self->nextReadTimeout = Hal_getTimeInMs() + self->readTimeoutInMs;
                     nextState = INT_STATE_WAIT_FOR_COTP_CONNECT_RESP;
                 }
                 else {
@@ -390,7 +393,7 @@ IsoClientConnection_handleConnection(IsoClientConnection self)
                     else {
                         sendAcseInitiateRequest(self);
 
-                        self->nextReadTimeout = Hal_getTimeInMs() + CONFIG_TCP_READ_TIMEOUT_MS;
+                        self->nextReadTimeout = Hal_getTimeInMs() + self->readTimeoutInMs;
 
                         nextState = INT_STATE_WAIT_FOR_ACSE_RESP;
                     }
@@ -424,7 +427,7 @@ IsoClientConnection_handleConnection(IsoClientConnection self)
 
                 self->callback(ISO_IND_ASSOCIATION_FAILED, self->callbackParameter, NULL);
 
-                nextState = INT_STATE_ERROR;
+                nextState = INT_STATE_CLOSE_ON_ERROR;
             }
             else {
 
@@ -632,16 +635,23 @@ IsoClientConnection_handleConnection(IsoClientConnection self)
 
 
 bool
-IsoClientConnection_associateAsync(IsoClientConnection self, uint32_t connectTimeoutInMs)
+IsoClientConnection_associateAsync(IsoClientConnection self, uint32_t connectTimeoutInMs, uint32_t readTimeoutInMs)
 {
-    bool success = true;
-
-    /* Create socket and start connect */
-    setState(self, STATE_CONNECTING);
-
     Semaphore_wait(self->tickMutex);
 
+    /* Create socket and start connect */
+
     self->socket = TcpSocket_create();
+
+    if (self->socket == NULL) {
+        Semaphore_post(self->tickMutex);
+        return false;
+    }
+
+    bool success = true;
+
+    setState(self, STATE_CONNECTING);
+    setIntState(self, INT_STATE_TCP_CONNECTING);
 
 #if (CONFIG_ACTIVATE_TCP_KEEPALIVE == 1)
     Socket_activateTcpKeepAlive(self->socket,
@@ -650,7 +660,8 @@ IsoClientConnection_associateAsync(IsoClientConnection self, uint32_t connectTim
             CONFIG_TCP_KEEPALIVE_CNT);
 #endif
 
-    setIntState(self, INT_STATE_TCP_CONNECTING);
+    /* set read timeout */
+    self->readTimeoutInMs = readTimeoutInMs;
 
     /* set timeout for connect */
     self->nextReadTimeout = Hal_getTimeInMs() + connectTimeoutInMs;
@@ -749,6 +760,8 @@ IsoClientConnection_destroy(IsoClientConnection self)
 
         IsoClientConnection_close(self);
     }
+
+    releaseSocket(self);
 
     if (self->receiveBuf != NULL)
         GLOBAL_FREEMEM(self->receiveBuf);

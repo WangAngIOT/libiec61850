@@ -3,22 +3,22 @@
  *
  *  Copyright 2013-2018 Michael Zillgith
  *
- *	This file is part of libIEC61850.
+ *  This file is part of libIEC61850.
  *
- *	libIEC61850 is free software: you can redistribute it and/or modify
- *	it under the terms of the GNU General Public License as published by
- *	the Free Software Foundation, either version 3 of the License, or
- *	(at your option) any later version.
+ *  libIEC61850 is free software: you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation, either version 3 of the License, or
+ *  (at your option) any later version.
  *
- *	libIEC61850 is distributed in the hope that it will be useful,
- *	but WITHOUT ANY WARRANTY; without even the implied warranty of
- *	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *	GNU General Public License for more details.
+ *  libIEC61850 is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
  *
- *	You should have received a copy of the GNU General Public License
- *	along with libIEC61850.  If not, see <http://www.gnu.org/licenses/>.
+ *  You should have received a copy of the GNU General Public License
+ *  along with libIEC61850.  If not, see <http://www.gnu.org/licenses/>.
  *
- *	See COPYING file for the complete license text.
+ *  See COPYING file for the complete license text.
  *
  *
  *  MMS client connection handling code for libiec61850.
@@ -157,11 +157,6 @@ handleConfirmedRequestPdu(
         bufPos = BerDecoder_decodeLength(buffer, &length, bufPos, maxBufPos);
 
         if (bufPos < 0) {
-            mmsMsg_createMmsRejectPdu(&invokeId, MMS_ERROR_REJECT_INVALID_PDU, response);
-            return;
-        }
-
-        if (bufPos + length > maxBufPos) {
             mmsMsg_createMmsRejectPdu(&invokeId, MMS_ERROR_REJECT_INVALID_PDU, response);
             return;
         }
@@ -411,28 +406,32 @@ handleConfirmedErrorPdu(
         uint8_t* buffer, int bufPos, int maxBufPos,
         ByteBuffer* response)
 {
-    uint32_t invokeId;
+    uint32_t invokeId = 0;
+    bool hasInvokeId = false;
     MmsServiceError serviceError;
 
-    if (mmsMsg_parseConfirmedErrorPDU(buffer, bufPos, maxBufPos, &invokeId, &serviceError)) {
+    if (mmsMsg_parseConfirmedErrorPDU(buffer, bufPos, maxBufPos, &invokeId, &hasInvokeId, &serviceError)) {
 
         if (DEBUG_MMS_SERVER)
-            printf("MMS_SERVER: Handle confirmed error PDU: invokeID: %i\n", invokeId);
+            printf("MMS_SERVER: Handle confirmed error PDU: invokeID: %u\n", invokeId);
 
-        /* check if message is related to an existing file upload task */
-        int i;
-        for (i = 0; i < CONFIG_MMS_SERVER_MAX_GET_FILE_TASKS; i++) {
+        if (hasInvokeId) {
+            /* check if message is related to an existing file upload task */
+            int i;
+            for (i = 0; i < CONFIG_MMS_SERVER_MAX_GET_FILE_TASKS; i++) {
 
-            if (self->server->fileUploadTasks[i].state != MMS_FILE_UPLOAD_STATE_NOT_USED) {
+                if (self->server->fileUploadTasks[i].state != MMS_FILE_UPLOAD_STATE_NOT_USED) {
 
-                if (self->server->fileUploadTasks[i].lastRequestInvokeId == invokeId) {
+                    if (self->server->fileUploadTasks[i].lastRequestInvokeId == invokeId) {
 
-                    self->server->fileUploadTasks[i].state = MMS_FILE_UPLOAD_STATE_SEND_OBTAIN_FILE_ERROR_SOURCE;
-                    return;
+                        self->server->fileUploadTasks[i].state = MMS_FILE_UPLOAD_STATE_SEND_OBTAIN_FILE_ERROR_SOURCE;
+                        return;
+                    }
+
                 }
-
             }
         }
+
     }
     else {
         if (DEBUG_MMS_SERVER)
@@ -453,14 +452,26 @@ getUploadTaskByInvokeId(MmsServer mmsServer, uint32_t invokeId)
 }
 
 static void
-mmsFileReadHandler(void* parameter, int32_t frsmId, uint8_t* buffer, uint32_t bytesReceived)
+mmsFileReadHandler(uint32_t invokeId, void* parameter, MmsError mmsError, int32_t frsmId, uint8_t* buffer, uint32_t bytesReceived, bool moreFollows)
 {
     MmsObtainFileTask task = (MmsObtainFileTask) parameter;
 
-    if (DEBUG_MMS_SERVER)
-        printf("MMS_SERVER:  FILE %i received %i bytes\n", frsmId, bytesReceived);
+    if (mmsError == MMS_ERROR_NONE) {
+        if (DEBUG_MMS_SERVER)
+            printf("MMS_SERVER:  file %i received %i bytes\n", task->frmsId, bytesReceived);
 
-    FileSystem_writeFile(task->fileHandle, buffer, bytesReceived);
+        if(task->fileHandle){
+            FileSystem_writeFile(task->fileHandle, buffer, bytesReceived);
+        }
+        else{
+            if (DEBUG_MMS_SERVER)
+                printf("MMS_SERVER: problem reading file %i file already closed\n", task->frmsId);
+        }
+    }
+    else {
+        if (DEBUG_MMS_SERVER)
+            printf("MMS_SERVER:  problem reading file %i (error code: %i)\n", task->frmsId, mmsError);
+    }
 }
 
 static void
@@ -538,25 +549,26 @@ handleConfirmedResponsePdu(
                     if (fileTask != NULL) {
 
                         bool moreFollows;
-                        uint8_t* dataBuffer = NULL;
-                        int dataLength = 0;
 
-                        if (mmsMsg_parseFileReadResponse(buffer, startBufPos, maxBufPos, &moreFollows, &dataBuffer, &dataLength)) {
+                        if(fileTask->fileHandle == NULL){
+                            fileTask->state = MMS_FILE_UPLOAD_STATE_SEND_OBTAIN_FILE_ERROR_DESTINATION;
+                        }
+                        else{
+                            if (mmsMsg_parseFileReadResponse(buffer, startBufPos, maxBufPos, invokeId, fileTask->frmsId, &moreFollows, mmsFileReadHandler, (void*) fileTask)) {
 
-                            mmsFileReadHandler((void*) fileTask, fileTask->frmsId, dataBuffer, dataLength);
-
-                            if (moreFollows) {
-                                fileTask->state = MMS_FILE_UPLOAD_STATE_SEND_FILE_READ;
+                                if (moreFollows) {
+                                    fileTask->state = MMS_FILE_UPLOAD_STATE_SEND_FILE_READ;
+                                }
+                                else {
+                                    fileTask->state = MMS_FILE_UPLOAD_STATE_SEND_FILE_CLOSE;
+                                }
                             }
                             else {
-                                fileTask->state = MMS_FILE_UPLOAD_STATE_SEND_FILE_CLOSE;
-                            }
-                        }
-                        else {
-                            fileTask->state = MMS_FILE_UPLOAD_STATE_SEND_OBTAIN_FILE_ERROR_SOURCE;
+                                fileTask->state = MMS_FILE_UPLOAD_STATE_SEND_OBTAIN_FILE_ERROR_SOURCE;
 
-                            if (DEBUG_MMS_SERVER)
-                                printf("MMS_SERVER: error parsing file-read-response\n");
+                                if (DEBUG_MMS_SERVER)
+                                    printf("MMS_SERVER: error parsing file-read-response\n");
+                            }
                         }
                     }
                     else {
@@ -577,7 +589,9 @@ handleConfirmedResponsePdu(
                     MmsObtainFileTask fileTask = getUploadTaskByInvokeId(self->server, invokeId);
 
                     if (fileTask != NULL) {
-                        FileSystem_closeFile(fileTask->fileHandle);
+                        if(fileTask->fileHandle){
+                            FileSystem_closeFile(fileTask->fileHandle);
+                        }
                         fileTask->state = MMS_FILE_UPLOAD_STATE_SEND_OBTAIN_FILE_RESPONSE;
                     }
                     else {
@@ -682,12 +696,20 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
     return;
 }
 
-static void /* will be called by IsoConnection */
+static void /* is called by IsoConnection */
 messageReceived(void* parameter, ByteBuffer* message, ByteBuffer* response)
 {
     MmsServerConnection self = (MmsServerConnection) parameter;
 
     MmsServerConnection_parseMessage(self, message, response);
+}
+
+static void /* is called by IsoConnection */
+connectionTickHandler(void* parameter)
+{
+    MmsServerConnection self = (MmsServerConnection) parameter;
+
+    MmsServer_callConnectionHandler(self->server, self);
 }
 
 /**********************************************************************************************
@@ -719,7 +741,9 @@ MmsServerConnection_init(MmsServerConnection connection, MmsServer server, IsoCo
     self->lastRequestInvokeId = 0;
 #endif
 
-    IsoConnection_installListener(isoCon, messageReceived, (void*) self);
+    IsoConnection_installListener(isoCon, messageReceived,
+            (UserLayerTickHandler) connectionTickHandler,
+            (void*) self);
 
     return self;
 }
@@ -734,6 +758,8 @@ MmsServerConnection_destroy(MmsServerConnection self)
     for (frsmIndex = 0; frsmIndex < CONFIG_MMS_MAX_NUMBER_OF_OPEN_FILES_PER_CONNECTION; frsmIndex++)
         if (self->frsms[frsmIndex].fileHandle != NULL)
             FileSystem_closeFile(self->frsms[frsmIndex].fileHandle);
+
+    mmsServerConnection_stopFileUploadTasks(self);
 #endif
 
 #if (MMS_DYNAMIC_DATA_SETS == 1)
@@ -741,6 +767,18 @@ MmsServerConnection_destroy(MmsServerConnection self)
 #endif
 
     GLOBAL_FREEMEM(self);
+}
+
+int
+MmsServerConnection_getMaxMmsPduSize(MmsServerConnection self)
+{
+    return self->maxPduSize;
+}
+
+void
+MmsServerConnection_sendMessage(MmsServerConnection self, ByteBuffer* message)
+{
+    IsoConnection_sendMessage(self->isoConnection, message);
 }
 
 #if (MMS_DYNAMIC_DATA_SETS == 1)
@@ -773,10 +811,16 @@ MmsServerConnection_getClientAddress(MmsServerConnection self)
     return IsoConnection_getPeerAddress(self->isoConnection);
 }
 
-IsoConnection
-MmsServerConnection_getIsoConnection(MmsServerConnection self)
+char*
+MmsServerConnection_getLocalAddress(MmsServerConnection self)
 {
-    return self->isoConnection;
+    return IsoConnection_getLocalAddress(self->isoConnection);
+}
+
+void*
+MmsServerConnection_getSecurityToken(MmsServerConnection self)
+{
+    return IsoConnection_getSecurityToken(self->isoConnection);
 }
 
 #if (MMS_DYNAMIC_DATA_SETS == 1)

@@ -32,7 +32,7 @@
 #include "mms_device_model.h"
 #include "mms_common_internal.h"
 #include "stack_config.h"
-#include "mms_server.h"
+#include "mms_server_libinternal.h"
 
 
 #include "byte_buffer.h"
@@ -85,6 +85,8 @@
 #define MMS_FILE_UPLOAD_STATE_SEND_OBTAIN_FILE_ERROR_DESTINATION 9
 #define MMS_FILE_UPLOAD_STATE_SEND_OBTAIN_FILE_RESPONSE 10
 
+#define MMS_FILE_UPLOAD_STATE_INTERRUPTED 11
+
 typedef struct sMmsObtainFileTask* MmsObtainFileTask;
 
 struct sMmsObtainFileTask {
@@ -118,6 +120,10 @@ struct sMmsServer {
 
     MmsNamedVariableListChangedHandler variableListChangedHandler; /* TODO this is only required if dynamic data sets are supported! */
     void* variableListChangedHandlerParameter;
+
+#if (CONFIG_MMS_THREADLESS_STACK != 1)
+    Semaphore openConnectionsLock;
+#endif
 
     Map openConnections;
     Map valueCaches;
@@ -212,6 +218,9 @@ MmsServer_reserveTransmitBuffer(MmsServer self);
 
 LIB61850_INTERNAL void
 MmsServer_releaseTransmitBuffer(MmsServer self);
+
+LIB61850_INTERNAL void
+MmsServer_callConnectionHandler(MmsServer self, MmsServerConnection connection);
 
 /* write_out function required for ASN.1 encoding */
 LIB61850_INTERNAL int
@@ -357,8 +366,14 @@ mmsServer_handleObtainFileRequest(
         uint32_t invokeId,
         ByteBuffer* response);
 
-LIB61850_INTERNAL int
+LIB61850_INTERNAL void
+mmsServerConnection_stopFileUploadTasks(MmsServerConnection self);
+
+LIB61850_INTERNAL bool
 mmsServer_isIndexAccess(AlternateAccess_t* alternateAccess);
+
+LIB61850_INTERNAL bool
+mmsServer_isComponentAccess(AlternateAccess_t* alternateAccess);
 
 LIB61850_INTERNAL int
 mmsServer_getLowIndex(AlternateAccess_t* alternateAccess);

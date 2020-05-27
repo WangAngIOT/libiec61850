@@ -71,9 +71,9 @@ LIB_INCLUDE_DIRS += third_party/winpcap/Include
 endif
 
 ifdef WITH_MBEDTLS
-LIB_SOURCE_DIRS += third_party/mbedtls/mbedtls-2.6.0/library
+LIB_SOURCE_DIRS += third_party/mbedtls/mbedtls-2.16/library
 LIB_SOURCE_DIRS += hal/tls/mbedtls
-LIB_INCLUDE_DIRS += third_party/mbedtls/mbedtls-2.6.0/include
+LIB_INCLUDE_DIRS += third_party/mbedtls/mbedtls-2.16/include
 LIB_INCLUDE_DIRS += hal/tls/mbedtls
 CFLAGS += -D'MBEDTLS_CONFIG_FILE="mbedtls_config.h"'
 CFLAGS += -D'CONFIG_MMS_SUPPORT_TLS=1'
@@ -90,6 +90,7 @@ LIB_API_HEADER_FILES += hal/inc/hal_thread.h
 LIB_API_HEADER_FILES += hal/inc/hal_filesystem.h
 LIB_API_HEADER_FILES += hal/inc/tls_config.h
 LIB_API_HEADER_FILES += hal/inc/lib_memory.h
+LIB_API_HEADER_FILES += hal/inc/hal_base.h
 LIB_API_HEADER_FILES += src/common/inc/libiec61850_common_api.h
 LIB_API_HEADER_FILES += src/common/inc/linked_list.h
 LIB_API_HEADER_FILES += src/iec61850/inc/iec61850_client.h
@@ -134,6 +135,7 @@ CFLAGS += -Wnested-externs
 CFLAGS += -Wmissing-declarations 
 CFLAGS += -Wshadow
 CFLAGS += -Wall
+CGLAGS += -Wextra
 #CFLAGS += -Werror  
 
 all:	lib

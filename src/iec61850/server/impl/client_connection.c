@@ -125,7 +125,15 @@ ClientConnection_getPeerAddress(ClientConnection self)
 {
     MmsServerConnection mmsConnection = (MmsServerConnection) self->serverConnectionHandle;
 
-    return IsoConnection_getPeerAddress(MmsServerConnection_getIsoConnection(mmsConnection));
+    return MmsServerConnection_getClientAddress(mmsConnection);
+}
+
+const char*
+ClientConnection_getLocalAddress(ClientConnection self)
+{
+    MmsServerConnection mmsConnection = (MmsServerConnection) self->serverConnectionHandle;
+
+    return MmsServerConnection_getLocalAddress(mmsConnection);
 }
 
 
@@ -134,5 +142,5 @@ ClientConnection_getSecurityToken(ClientConnection self)
 {
     MmsServerConnection mmsConnection = (MmsServerConnection) self->serverConnectionHandle;
 
-    return IsoConnection_getSecurityToken(MmsServerConnection_getIsoConnection(mmsConnection));
+    return MmsServerConnection_getSecurityToken(mmsConnection);
 }

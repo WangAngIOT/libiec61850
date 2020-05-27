@@ -1,7 +1,7 @@
 /*
  *  control.h
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2019 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -27,6 +27,7 @@
 #include "iec61850_model.h"
 #include "iec61850_server.h"
 #include "mms_server_connection.h"
+#include "mms_server_libinternal.h"
 #include "mms_device_model.h"
 
 #include "mms_mapping_internal.h"
@@ -43,10 +44,21 @@ struct sControlObject
     char* lnName;
     char* name;
 
-    int state;
+    unsigned state:4;
+    unsigned ctlModel:4;
+    unsigned pendingEvents:8;
+    unsigned testMode:1;
+    unsigned interlockCheck:1;
+    unsigned synchroCheck:1;
+    unsigned timeActivatedOperate:1;
+    unsigned operateOnce:1;
+    unsigned isSelect:1;
+    ControlAddCause addCauseValue:6;
+    unsigned errorValue:2;
 
 #if (CONFIG_MMS_THREADLESS_STACK != 1)
     Semaphore stateLock;
+    Semaphore pendingEventsLock;
 #endif
 
     MmsValue* mmsValue;
@@ -65,31 +77,30 @@ struct sControlObject
     MmsValue* ctlNumSt;
     MmsValue* originSt;
 
-    char ctlObjectName[130];
+    /* for automatic update of stSeld attribute */
+    DataAttribute* stSeld;
+
+    /* for automatic update of opRcvd attribute */
+    DataAttribute* opRcvd;
+
+    /* for automatic update of opOk attribute */
+    DataAttribute* opOk;
+
+    /* for automatic update of tOpOk attribute */
+    DataAttribute* tOpOk;
 
     /* for LastAppIError */
     MmsValue* error;
     MmsValue* addCause;
 
-    bool selected;
     uint64_t selectTime;
     uint32_t selectTimeout;
     MmsValue* sboClass;
     MmsValue* sboTimeout;
 
-    bool timeActivatedOperate;
     uint64_t operateTime;
 
-    bool operateOnce;
     MmsServerConnection mmsConnection;
-
-    MmsValue* emptyString;
-
-    uint32_t ctlModel;
-
-    bool testMode;
-    bool interlockCheck;
-    bool synchroCheck;
 
     uint32_t operateInvokeId;
 
@@ -101,6 +112,8 @@ struct sControlObject
 
     ControlWaitForExecutionHandler waitForExecutionHandler;
     void* waitForExecutionHandlerParameter;
+
+    DataObject* dataObject;
 };
 
 LIB61850_INTERNAL ControlObject*

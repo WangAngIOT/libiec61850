@@ -45,10 +45,23 @@ namespace IEC61850.Server
 		static extern int IedServerConfig_getReportBufferSize(IntPtr self);
 
 		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+		static extern void IedServerConfig_setReportBufferSizeForURCBs(IntPtr self, int reportBufferSize);
+
+		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+		static extern int IedServerConfig_getReportBufferSizeForURCBs(IntPtr self);
+
+		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 		static extern void IedServerConfig_setFileServiceBasePath(IntPtr self, string basepath);
 
 		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 		static extern IntPtr IedServerConfig_getFileServiceBasePath(IntPtr self);
+
+		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+		static extern void IedServerConfig_enableFileService(IntPtr self, [MarshalAs(UnmanagedType.I1)] bool enable);
+
+		[return: MarshalAs(UnmanagedType.I1)]
+		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+		static extern bool IedServerConfig_isFileServiceEnabled(IntPtr self);
 
 		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 		static extern void IedServerConfig_setEdition(IntPtr self, byte edition);
@@ -87,6 +100,13 @@ namespace IEC61850.Server
 		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 		static extern int IedServerConfig_getMaxDatasSetEntries(IntPtr self);
 
+		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+		static extern void IedServerConfig_enableLogService(IntPtr self, [MarshalAs(UnmanagedType.I1)] bool enable);
+
+		[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+		[return: MarshalAs(UnmanagedType.I1)]
+		static extern bool IedServerConfig_isLogServiceEnabled(IntPtr self);
+
 		internal IntPtr self;
 
 		public IedServerConfig ()
@@ -109,6 +129,22 @@ namespace IEC61850.Server
 		}
 
 		/// <summary>
+		/// Gets or sets the size of the report buffer for unbuffered report control blocks
+		/// </summary>
+		/// <value>The size of the report buffer.</value>
+		public int ReportBufferSizeForURCBs
+		{
+			get
+			{
+				return IedServerConfig_getReportBufferSizeForURCBs(self);
+			}
+			set
+			{
+				IedServerConfig_setReportBufferSizeForURCBs(self, value);
+			}
+		}
+
+		/// <summary>
 		/// Gets or sets the file service base path.
 		/// </summary>
 		/// <value>The file service base path.</value>
@@ -119,6 +155,22 @@ namespace IEC61850.Server
 			}
 			set {
 				IedServerConfig_setFileServiceBasePath (self, value);
+			}
+		}
+
+		/// <summary>
+		/// Enable/Disable file service for MMS
+		/// </summary>
+		/// <value><c>true</c> if file service is enabled; otherwise, <c>false</c>.</value>
+		public bool FileServiceEnabled
+		{
+			get
+			{
+				return IedServerConfig_isFileServiceEnabled(self);
+			}
+			set
+			{
+				IedServerConfig_enableFileService(self, value);
 			}
 		}
 
@@ -203,6 +255,22 @@ namespace IEC61850.Server
 			}
 			set {
 				IedServerConfig_setMaxDomainSpecificDataSets (self, value);
+			}
+		}
+
+		/// <summary>
+		/// Enable/Disable log service for MMS
+		/// </summary>
+		/// <value><c>true</c> if log service is enabled; otherwise, <c>false</c>.</value>
+		public bool LogServiceEnabled
+		{
+			get
+			{
+				return IedServerConfig_isLogServiceEnabled(self);
+			}
+			set
+			{
+				IedServerConfig_enableLogService(self, value);
 			}
 		}
 

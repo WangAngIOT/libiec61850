@@ -1,7 +1,7 @@
 /*
  *  iec61850_client.h
  *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2019 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -64,7 +64,7 @@ typedef struct sIedConnection* IedConnection;
 typedef struct
 {
     int ctlNum;
-    int error;
+    ControlLastApplError error;
     ControlAddCause addCause;
 } LastApplError;
 
@@ -159,6 +159,9 @@ typedef enum {
     /** The object is invalidated (returned by server) */
     IED_ERROR_OBJECT_INVALIDATED = 33,
 
+    /** Received an invalid response message from the server */
+    IED_ERROR_MALFORMED_MESSAGE = 34,
+
     /** Service not implemented */
     IED_ERROR_SERVICE_NOT_IMPLEMENTED = 98,
 
@@ -240,6 +243,28 @@ IedConnection_destroy(IedConnection self);
  */
 LIB61850_API void
 IedConnection_setConnectTimeout(IedConnection self, uint32_t timeoutInMs);
+
+/**
+ * \brief set the request timeout in ms
+ *
+ * Set the request timeout for this connection. You can call this function any time to adjust
+ * timeout behavior.
+ *
+ * \param self the connection object
+ * \param timoutInMs the connection timeout in ms
+ */
+LIB61850_API void
+IedConnection_setRequestTimeout(IedConnection self, uint32_t timeoutInMs);
+
+/**
+ * \brief get the request timeout in ms for this connection
+ *
+ * \param self the connection object
+ *
+ * \return request timeout in milliseconds
+ */
+LIB61850_API uint32_t
+IedConnection_getRequestTimeout(IedConnection self);
 
 /**
  * \brief Perform MMS message handling and house-keeping tasks (for non-thread mode only)
@@ -577,9 +602,10 @@ LIB61850_API PhyComAddress
 ClientSVControlBlock_getDstAddress(ClientSVControlBlock self);
 
 /**
- * \brief returns the OptFlds bit string as integer
+ * \brief Gets the OptFlds parameter of the RCB (decides what information to include in a report)
  *
- * \param self the ClientSVControlBlock instance to operate on
+ * \param self the RCB instance
+ * \return bit field representing the optional fields of a report (uses flags from \ref REPORT_OPTIONS)
  */
 LIB61850_API int
 ClientSVControlBlock_getOptFlds(ClientSVControlBlock self);
@@ -1098,7 +1124,7 @@ typedef enum {
     /** the element is included due to a general interrogation by the client */
     IEC61850_REASON_GI = 5,
 
-    /** the reason for inclusion is unknown */
+    /** the reason for inclusion is unknown (e.g. report is not configured to include reason-for-inclusion) */
     IEC61850_REASON_UNKNOWN = 6
 } ReasonForInclusion;
 
@@ -1552,15 +1578,44 @@ ClientReportControlBlock_setDataSetReference(ClientReportControlBlock self, cons
 LIB61850_API uint32_t
 ClientReportControlBlock_getConfRev(ClientReportControlBlock self);
 
+/**
+ * \brief Gets the OptFlds parameter of the RCB (decides what information to include in a report)
+ *
+ * \param self the RCB instance
+ * \return bit field representing the optional fields of a report (uses flags from \ref REPORT_OPTIONS)
+ */
 LIB61850_API int
 ClientReportControlBlock_getOptFlds(ClientReportControlBlock self);
 
+/**
+ * \brief Set the OptFlds parameter of the RCB (decides what information to include in a report)
+ *
+ * \param self the RCB instance
+ * \param optFlds bit field representing the optional fields of a report (use flags from \ref REPORT_OPTIONS)
+ */
 LIB61850_API void
 ClientReportControlBlock_setOptFlds(ClientReportControlBlock self, int optFlds);
 
+/**
+ * \brief Get the BufTm (buffer time) parameter of the RCB
+ *
+ * The buffer time is the time to wait after a triggering event before the report is actually sent.
+ * It is used to be able to collect events that happen in a short time period and send them in a single report.
+ *
+ * \param self the RCB instance
+ */
 LIB61850_API uint32_t
 ClientReportControlBlock_getBufTm(ClientReportControlBlock self);
 
+/**
+ * \brief Set the BufTm (buffer time) parameter of the RCB
+ *
+ * The buffer time is the time to wait after a triggering event before the report is actually sent.
+ * It is used to be able to collect events that happen in a short time period and send them in a single report.
+ *
+ * \param self the RCB instance
+ * \param bufTm the buffer time in ms
+ */
 LIB61850_API void
 ClientReportControlBlock_setBufTm(ClientReportControlBlock self, uint32_t bufTm);
 
@@ -1588,8 +1643,23 @@ ClientReportControlBlock_setGI(ClientReportControlBlock self, bool gi);
 LIB61850_API bool
 ClientReportControlBlock_getPurgeBuf(ClientReportControlBlock self);
 
+/**
+ * \brief Set the "PurgeBuf" attribute value (only BRCB)
+ *
+ * When set to true the report buffer will be cleared.
+ *
+ * \param purgeBuf attribute value
+ */
 LIB61850_API void
 ClientReportControlBlock_setPurgeBuf(ClientReportControlBlock self, bool purgeBuf);
+
+/**
+ *  \brief Check if optional attribute "ResvTms" is present in BRCB
+ *
+ *  \return true when present, false otherwise
+ */
+LIB61850_API  bool
+ClientReportControlBlock_hasResvTms(ClientReportControlBlock self);
 
 LIB61850_API int16_t
 ClientReportControlBlock_getResvTms(ClientReportControlBlock self);
@@ -1954,11 +2024,22 @@ LIB61850_API MmsType
 ControlObjectClient_getCtlValType(ControlObjectClient self);
 
 /**
+ * \brief Get the error code of the last synchronous control action (operate, select, select-with-value, cancel)
+ *
+ * \param self the control object instance to use
+ *
+ * \return the client error code
+ */
+LIB61850_API IedClientError
+ControlObjectClient_getLastError(ControlObjectClient self);
+
+/**
  * \brief Send an operate command to the server
  *
  * \param self the control object instance to use
  * \param ctlVal the control value (for APC the value may be either AnalogueValue (MMS_STRUCT) or MMS_FLOAT/MMS_INTEGER
- * \param operTime the time when the command has to be executed (for time activated control). If this value is 0 the command will be executed instantly.
+ * \param operTime the time when the command has to be executed (for time activated control). The value represents the local time of the
+ *                 server in milliseconds since epoch. If this value is 0 the command will be executed instantly.
  *
  * \return true if operation has been successful, false otherwise.
  */
@@ -2012,7 +2093,8 @@ ControlObjectClient_cancel(ControlObjectClient self);
  * \param self the control object instance to use
  * \param[out] err error code
  * \param ctlVal the control value (for APC the value may be either AnalogueValue (MMS_STRUCT) or MMS_FLOAT/MMS_INTEGER
- * \param operTime the time when the command has to be executed (for time activated control). If this value is 0 the command will be executed instantly.
+ * \param operTime the time when the command has to be executed (for time activated control). The value represents the local time of the
+ *                 server in milliseconds since epoch. If this value is 0 the command will be executed instantly.
  * \param handler the user provided callback handler
  * \param parameter user provided parameter that is passed to the callback handler
  *

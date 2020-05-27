@@ -21,54 +21,39 @@
  *  See COPYING file for the complete license text.
  */
 using System;
-using System.Text;
-using System.Runtime.InteropServices;
 using System.Collections.Generic;
-using System.Collections;
-
+using System.Runtime.InteropServices;
 using IEC61850.Common;
 using IEC61850.TLS;
 
-/// <summary>
-/// IEC 61850 API for the libiec61850 .NET wrapper library
-/// </summary>
+// IEC 61850 API for the libiec61850 .NET wrapper library
 namespace IEC61850
 {
-	/// <summary>
-	/// IEC 61850 server API.
-	/// </summary>
-	namespace Server
-	{
-		
-		public class ConfigFileParser
-		{
+    // IEC 61850 server API.
+    namespace Server
+    {
+        /// <summary>
+        /// Config file parser.
+        /// </summary>
+        public class ConfigFileParser
+        {
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern IntPtr ConfigFileParser_createModelFromConfigFileEx(string filename);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			static extern IntPtr FileSystem_openFile(string filePath, [MarshalAs(UnmanagedType.I1)] bool readWrite);
+            public static IedModel CreateModelFromConfigFile(string filePath)
+            { 
+                IntPtr retVal = ConfigFileParser_createModelFromConfigFileEx (filePath);
+                if (retVal == IntPtr.Zero) {
+                    return null;
+                }
 
+                return new IedModel (retVal);
+            }
+        }
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			static extern IntPtr ConfigFileParser_createModelFromConfigFile(IntPtr fileHandle);
-
-			public static IedModel CreateModelFromConfigFile(string filePath)
-			{
-				IntPtr fileHandle = FileSystem_openFile (filePath, false);
-
-				if (fileHandle != IntPtr.Zero) {
-					
-					IntPtr retVal = ConfigFileParser_createModelFromConfigFile (fileHandle);
-					if (retVal == IntPtr.Zero) {
-						return null;
-					}
-
-					return new IedModel (retVal);
-
-				} else
-					return null;
-				//TODO else throw exception
-			}
-		}
-
+        /// <summary>
+        /// Representation of the IED server data model
+        /// </summary>
 		public class IedModel
 		{
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
@@ -93,6 +78,10 @@ namespace IEC61850
 				this.self = self;
 			}
 
+            /// <summary>
+            /// Initializes a new instance of the <see cref="T:IEC61850.Server.IedModel"/> class.
+            /// </summary>
+            /// <param name="name">IED name</param>
 			public IedModel(string name)
 			{
 				self = IedModel_create(name);
@@ -159,8 +148,6 @@ namespace IEC61850
 
 				return getModelNodeFromNodeRef (nodeRef);
 			}
-
-
 		}
 
 		public class LogicalDevice : ModelNode
@@ -258,6 +245,51 @@ namespace IEC61850
 			static extern IntPtr CDC_SPS_create(string name, IntPtr parent, uint options);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_DPS_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_VSS_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_SEC_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_CMV_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_SAV_create(string name, IntPtr parent, uint options, [MarshalAs(UnmanagedType.I1)] bool isIntegerNotFloat);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_ACD_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_ACT_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_SPG_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_VSG_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_ENG_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_ING_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_ASG_create(string name, IntPtr parent, uint options, [MarshalAs(UnmanagedType.I1)] bool isIntegerNotFloat);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_WYE_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_DEL_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_HST_create(string name, IntPtr parent, uint options, ushort maxPts);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr CDC_INS_create(string name, IntPtr parent, uint options);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
@@ -271,6 +303,45 @@ namespace IEC61850
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr CDC_DPL_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_ENS_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_SPC_create(string name, IntPtr parent, uint options, uint controlOptions);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_DPC_create(string name, IntPtr parent, uint options, uint controlOptions);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_BSC_create(string name, IntPtr parent, uint options, uint controlOptions, [MarshalAs(UnmanagedType.I1)] bool hasTransientIndicator);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_APC_create(string name, IntPtr parent, uint options, uint controlOptions, [MarshalAs(UnmanagedType.I1)] bool isIntegerNotFloat);
+			
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_BCR_create(string name, IntPtr parent, uint options);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_ENC_create(string name, IntPtr parent, uint options, uint controlOptions);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_SPV_create(string name, IntPtr parent, uint options, uint controlOptions, uint wpOptions, [MarshalAs(UnmanagedType.I1)] bool hasChaManRs);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_STV_create(string name, IntPtr parent, uint options, uint controlOptions, uint wpOptions, [MarshalAs(UnmanagedType.I1)] bool hasOldStatus);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_CMD_create(string name, IntPtr parent, uint options, uint controlOptions, uint wpOptions, [MarshalAs(UnmanagedType.I1)] bool hasOldStatus, [MarshalAs(UnmanagedType.I1)] bool hasCmTm, [MarshalAs(UnmanagedType.I1)] bool hasCmCt);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_ALM_create(string name, IntPtr parent, uint options, uint controlOptions, uint wpOptions, [MarshalAs(UnmanagedType.I1)] bool hasOldStatus);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_CTE_create(string name, IntPtr parent, uint options, uint controlOptions, uint wpOptions, [MarshalAs(UnmanagedType.I1)] bool hasHisRs);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr CDC_TMS_create(string name, IntPtr parent, uint options, uint controlOptions, uint wpOptions, [MarshalAs(UnmanagedType.I1)] bool hasHisRs);
 
 			public const int CDC_OPTION_DESC = (1 << 2);
 			public const int CDC_OPTION_DESC_UNICODE = (1 << 3);
@@ -296,6 +367,156 @@ namespace IEC61850
 
 				if (self != IntPtr.Zero)
 					return new DataObject (self);
+				else
+					return null;
+			}
+			
+			public static DataObject Create_CDC_DPS(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_DPS_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_VSS(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_VSS_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_SEC(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_SEC_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_CMV(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_CMV_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_SAV(ModelNode parent, string name, uint options, bool isIntegerNotFloat)
+			{
+				IntPtr self = CDC_SAV_create(name, parent.self, options, isIntegerNotFloat);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_ACD(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_ACD_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_ACT(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_ACT_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_SPG(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_SPG_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_VSG(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_VSG_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_ENG(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_ENG_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_ING(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_ING_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_ASG(ModelNode parent, string name, uint options, bool isIntegerNotFloat)
+			{
+				IntPtr self = CDC_ASG_create(name, parent.self, options, isIntegerNotFloat);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_WYE(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_WYE_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_DEL(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_DEL_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_HST(ModelNode parent, string name, uint options, ushort maxPts)
+			{
+				IntPtr self = CDC_HST_create(name, parent.self, options, maxPts);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
 				else
 					return null;
 			}
@@ -346,6 +567,136 @@ namespace IEC61850
 
 				if (self != IntPtr.Zero)
 					return new DataObject (self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_ENS(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_ENS_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_SPC(ModelNode parent, string name, uint options, uint controlOptions)
+			{
+				IntPtr self = CDC_SPC_create(name, parent.self, options, controlOptions);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_DPC(ModelNode parent, string name, uint options, uint controlOptions)
+			{
+				IntPtr self = CDC_DPC_create(name, parent.self, options, controlOptions);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_BSC(ModelNode parent, string name, uint options, uint controlOptions, bool hasTransientIndicator)
+			{
+				IntPtr self = CDC_BSC_create(name, parent.self, options, controlOptions, hasTransientIndicator);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_APC(ModelNode parent, string name, uint options, uint controlOptions, bool isIntegerNotFloat)
+			{
+				IntPtr self = CDC_APC_create(name, parent.self, options, controlOptions, isIntegerNotFloat);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_BCR(ModelNode parent, string name, uint options)
+			{
+				IntPtr self = CDC_BCR_create(name, parent.self, options);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_ENC(ModelNode parent, string name, uint options, uint controlOptions)
+			{
+				IntPtr self = CDC_ENC_create(name, parent.self, options, controlOptions);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_SPV(ModelNode parent, string name, uint options, uint controlOptions, uint wpOptions, bool hasChaManRs)
+			{
+				IntPtr self = CDC_SPV_create(name, parent.self, options, controlOptions, wpOptions, hasChaManRs);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_STV(ModelNode parent, string name, uint options, uint controlOptions, uint wpOptions, bool hasOldStatus)
+			{
+				IntPtr self = CDC_STV_create(name, parent.self, options, controlOptions, wpOptions, hasOldStatus);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_CMD(ModelNode parent, string name, uint options, uint controlOptions, uint wpOptions, bool hasOldStatus, bool hasCmTm, bool hasCmCt)
+			{
+				IntPtr self = CDC_CMD_create(name, parent.self, options, controlOptions, wpOptions, hasOldStatus, hasCmTm, hasCmCt);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_ALM(ModelNode parent, string name, uint options, uint controlOptions, uint wpOptions, bool hasOldStatus)
+			{
+				IntPtr self = CDC_ALM_create(name, parent.self, options, controlOptions, wpOptions, hasOldStatus);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_CTE(ModelNode parent, string name, uint options, uint controlOptions, uint wpOptions, bool hasHisRs)
+			{
+				IntPtr self = CDC_CTE_create(name, parent.self, options, controlOptions, wpOptions, hasHisRs);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
+				else
+					return null;
+			}
+
+			public static DataObject Create_CDC_TMS(ModelNode parent, string name, uint options, uint controlOptions, uint wpOptions, bool hasHisRs)
+			{
+				IntPtr self = CDC_TMS_create(name, parent.self, options, controlOptions, wpOptions, hasHisRs);
+
+				if (self != IntPtr.Zero)
+					return new DataObject(self);
 				else
 					return null;
 			}
@@ -483,10 +834,11 @@ namespace IEC61850
 
 		public class ClientConnection 
 		{
-			
-
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr ClientConnection_getPeerAddress(IntPtr self);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern IntPtr ClientConnection_getLocalAddress(IntPtr self);
 
 			internal IntPtr self;
 
@@ -503,7 +855,168 @@ namespace IEC61850
 				else
 					return null;
 			}
+
+			public string GetLocalAddress()
+			{
+				IntPtr localAddrPtr = ClientConnection_getLocalAddress(self);
+
+				if (localAddrPtr != IntPtr.Zero)
+					return Marshal.PtrToStringAnsi(localAddrPtr);
+				else
+					return null;
+			}
 		}
+
+        /// <summary>
+        /// Represents additional context information of the control action that caused the callback invokation
+        /// </summary>
+        public class ControlAction
+        {
+            [DllImport ("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern void ControlAction_setAddCause (IntPtr self, int addCause);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern void ControlAction_setError(IntPtr self, int error);
+
+            [DllImport ("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern int ControlAction_getOrCat (IntPtr self);
+
+            [DllImport ("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern IntPtr ControlAction_getOrIdent (IntPtr self, ref int size);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern IntPtr ControlAction_getClientConnection(IntPtr self);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern int ControlAction_getCtlNum(IntPtr self);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern UInt64 ControlAction_getControlTime(IntPtr self);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            [return: MarshalAs(UnmanagedType.I1)]
+            static extern bool ControlAction_isSelect(IntPtr self);
+
+            private IntPtr self;
+            private IedServer.ControlHandlerInfo info;
+            private IedServer iedServer;
+
+            internal ControlAction (IntPtr self, IedServer.ControlHandlerInfo info, IedServer iedServer)
+            {
+                this.self = self;
+                this.info = info;
+                this.iedServer = iedServer;
+            }
+
+            /// <summary>
+            /// Sets the error code for the next command termination or application error message.
+            /// </summary>
+            /// <param name="error">the errror code to use</param>
+            public void SetError(ControlLastApplError error)
+            {
+                ControlAction_setError(self, (int)error);
+            }
+
+            /// <summary>
+            /// Sets the add cause for the next command termination or application error message
+            /// </summary>
+            /// <param name="addCause">the additional cause code</param>
+            public void SetAddCause (ControlAddCause addCause)
+            {
+                ControlAction_setAddCause (self, (int)addCause);
+            }
+
+            /// <summary>
+            /// Gets the originator category provided by the client
+            /// </summary>
+            /// <returns>The or cat.</returns>
+            public OrCat GetOrCat ()
+            {
+                return (OrCat)ControlAction_getOrCat (self);
+            }
+
+            /// <summary>
+            ///  Get the originator identifier provided by the client
+            /// </summary>
+            /// <returns>The or ident.</returns>
+            public byte [] GetOrIdent ()
+            {
+                int size = 0;
+
+                IntPtr orIdentPtr = ControlAction_getOrIdent (self, ref size);
+
+                if (orIdentPtr == IntPtr.Zero)
+                    return null;
+
+                byte [] orIdent = new byte [size];
+
+                Marshal.Copy (orIdentPtr, orIdent, 0, size);
+
+                return orIdent;
+            }
+
+            /// <summary>
+            /// Gets the ctlNum attribute of the control action
+            /// </summary>
+            /// <returns>The ctlNum value. Valid values are restricted from 0 to 255, -1 means not present</returns>
+            public int GetCtlNum()
+            {
+                return ControlAction_getCtlNum(self);
+            }
+
+            /// <summary>
+            /// Gets the control object that is subject to this action
+            /// </summary>
+            /// <returns>the controllable data object instance</returns>
+            public DataObject GetControlObject ()
+            {
+                return info.controlObject;
+            }
+
+            /// <summary>
+            ///  Gets the time of control execution, if it's a time activated control
+            /// </summary>
+            /// <returns>The time of control execution or 0 for immediate execution</returns>
+            public UInt64 GetControlTime()
+            {
+                return ControlAction_getControlTime(self);
+            }
+
+            /// <summary>
+            /// Gets the tome of control execution as data time offset.
+            /// </summary>
+            /// <returns>The control execution time as data time offset.</returns>
+            public DateTimeOffset GetControlTimeAsDataTimeOffset()
+            {
+                return MmsValue.MsTimeToDateTimeOffset(GetControlTime());
+            }
+
+            /// <summary>
+            /// Gets the client object associated with the client that caused the control action
+            /// </summary>
+            /// <returns>The client connection.</returns>
+            public ClientConnection GetClientConnection ()
+            {
+                ClientConnection con = null;
+
+                IntPtr conPtr = ControlAction_getClientConnection (self);
+
+                if (conPtr != IntPtr.Zero) {
+                    iedServer.clientConnections.TryGetValue (conPtr, out con);
+                }
+
+                return con;
+            }
+
+            /// <summary>
+            /// Cehck if the control callback is called by a select or operate command
+            /// </summary>
+            /// <returns><c>true</c>, if select, <c>false</c> otherwise.</returns>
+            public bool IsSelect()
+            {
+                return ControlAction_isSelect(self);
+            }
+        }
 
 		public delegate MmsDataAccessError WriteAccessHandler (DataAttribute dataAttr, MmsValue value, 
 			ClientConnection connection, object parameter);
@@ -523,9 +1036,9 @@ namespace IEC61850
 			WAITING = 2
 		}
 
-		public delegate ControlHandlerResult ControlWaitForExecutionHandler (DataObject controlObject, object parameter, MmsValue ctlVal, bool test, bool synchroCheck);
+		public delegate ControlHandlerResult ControlWaitForExecutionHandler (ControlAction action, object parameter, MmsValue ctlVal, bool test, bool synchroCheck);
 
-		public delegate ControlHandlerResult ControlHandler (DataObject controlObject, object parameter, MmsValue ctlVal, bool test);
+		public delegate ControlHandlerResult ControlHandler (ControlAction action, object parameter, MmsValue ctlVal, bool test);
 
 		public enum CheckHandlerResult {
 			/// <summary>
@@ -550,8 +1063,7 @@ namespace IEC61850
 			OBJECT_UNDEFINED = 4
 		}
 
-		public delegate CheckHandlerResult CheckHandler (DataObject controlObject, object parameter, MmsValue ctlVal, bool test, bool interlockCheck, 
-			ClientConnection connection);
+		public delegate CheckHandlerResult CheckHandler (ControlAction action, object parameter, MmsValue ctlVal, bool test, bool interlockCheck);
 
 		/// <summary>
 		/// This class acts as the entry point for the IEC 61850 client API. It represents a single
@@ -577,6 +1089,9 @@ namespace IEC61850
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			[return: MarshalAs(UnmanagedType.Bool)]
 			static extern bool IedServer_isRunning(IntPtr self);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern int IedServer_getNumberOfOpenConnections(IntPtr self);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern void IedServer_lockDataModel(IntPtr self);
@@ -611,17 +1126,20 @@ namespace IEC61850
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern void IedServer_updateQuality(IntPtr self, IntPtr dataAttribute, ushort value);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern void IedServer_setServerIdentity(IntPtr self, string vendor, string model, string revision);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr IedServer_getAttributeValue(IntPtr self, IntPtr dataAttribute);
 
 			[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-			private delegate int InternalControlPerformCheckHandler (IntPtr parameter, IntPtr ctlVal, [MarshalAs(UnmanagedType.I1)] bool test, [MarshalAs(UnmanagedType.I1)] bool interlockCheck, IntPtr connection);
+			private delegate int InternalControlPerformCheckHandler (IntPtr action, IntPtr parameter, IntPtr ctlVal, [MarshalAs(UnmanagedType.I1)] bool test, [MarshalAs(UnmanagedType.I1)] bool interlockCheck);
 
 			[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-			private delegate int InternalControlWaitForExecutionHandler (IntPtr parameter, IntPtr ctlVal, [MarshalAs(UnmanagedType.I1)] bool test, [MarshalAs(UnmanagedType.I1)] bool synchoCheck);
+			private delegate int InternalControlWaitForExecutionHandler (IntPtr action, IntPtr parameter, IntPtr ctlVal, [MarshalAs(UnmanagedType.I1)] bool test, [MarshalAs(UnmanagedType.I1)] bool synchoCheck);
 
 			[UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-			private delegate int InternalControlHandler (IntPtr parameter, IntPtr ctlVal, [MarshalAs(UnmanagedType.I1)] bool test);
+			private delegate int InternalControlHandler (IntPtr action, IntPtr parameter, IntPtr ctlVal, [MarshalAs(UnmanagedType.I1)] bool test);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern void IedServer_setWaitForExecutionHandler(IntPtr self, IntPtr node, InternalControlWaitForExecutionHandler handler, IntPtr parameter);
@@ -665,7 +1183,7 @@ namespace IEC61850
 			private InternalControlPerformCheckHandler internalControlPerformCheckHandlerRef = null;
 			private InternalControlWaitForExecutionHandler internalControlWaitForExecutionHandlerRef = null;
 
-			private class ControlHandlerInfo {
+			internal class ControlHandlerInfo {
 				public DataObject controlObject = null;
 				public GCHandle handle;
 
@@ -691,42 +1209,46 @@ namespace IEC61850
 
 			private Dictionary<DataObject, ControlHandlerInfo> controlHandlers = new Dictionary<DataObject, ControlHandlerInfo> ();
 
-			int internalControlHandler (IntPtr parameter, IntPtr ctlVal, bool test)
+			int InternalControlHandlerImpl (IntPtr action, IntPtr parameter, IntPtr ctlVal, bool test)
 			{
 				GCHandle handle = GCHandle.FromIntPtr (parameter);
 
 				ControlHandlerInfo info = (ControlHandlerInfo)handle.Target;
 
+                ControlAction controlAction = new ControlAction (action, info, this);
+
 				if (info != null & info.controlHandler != null)
-					return (int)info.controlHandler (info.controlObject, info.controlHandlerParameter, new MmsValue (ctlVal), test);
+					return (int)info.controlHandler (controlAction, info.controlHandlerParameter, new MmsValue (ctlVal), test);
 				else
 					return (int)ControlHandlerResult.FAILED;
 			}
 
-			int internalCheckHandler(IntPtr parameter, IntPtr ctlVal, bool test, bool interlockCheck, IntPtr connection)
+			int InternalCheckHandlerImpl(IntPtr action, IntPtr parameter, IntPtr ctlVal, bool test, bool interlockCheck)
 			{
 				GCHandle handle = GCHandle.FromIntPtr (parameter);
 
 				ControlHandlerInfo info = (ControlHandlerInfo)handle.Target;
 
 				if (info != null & info.checkHandler != null) {
-					ClientConnection con = null;
 
-					clientConnections.TryGetValue (connection, out con);
+                    ControlAction controlAction = new ControlAction (action, info, this);
 
-					return (int)info.checkHandler (info.controlObject, info.checkHandlerParameter, new MmsValue (ctlVal), test, interlockCheck, con); 
+					return (int)info.checkHandler (controlAction, info.checkHandlerParameter, new MmsValue (ctlVal), test, interlockCheck); 
 				} else
 					return (int)CheckHandlerResult.OBJECT_UNDEFINED;
 			}
 
-			int internalControlWaitForExecutionHandler (IntPtr parameter, IntPtr ctlVal, bool test, bool synchoCheck)
+			int InternalControlWaitForExecutionHandlerImpl (IntPtr action, IntPtr parameter, IntPtr ctlVal, bool test, bool synchoCheck)
 			{
 				GCHandle handle = GCHandle.FromIntPtr (parameter);
 
 				ControlHandlerInfo info = (ControlHandlerInfo)handle.Target;
 
 				if (info != null & info.waitForExecHandler != null) {
-					return (int)info.waitForExecHandler (info.controlObject, info.waitForExecHandlerParameter, new MmsValue (ctlVal), test, synchoCheck);
+
+                    ControlAction controlAction = new ControlAction (action, info, this);
+
+                    return (int)info.waitForExecHandler (controlAction, info.waitForExecHandlerParameter, new MmsValue (ctlVal), test, synchoCheck);
 				} 
 				else
 					return (int)ControlHandlerResult.FAILED;
@@ -745,7 +1267,7 @@ namespace IEC61850
 				}
 			}
 
-			int writeAccessHandler (IntPtr dataAttribute, IntPtr value, IntPtr connection, IntPtr parameter)
+			int WriteAccessHandlerImpl (IntPtr dataAttribute, IntPtr value, IntPtr connection, IntPtr parameter)
 			{
 				//object info = writeAccessHandlers.Item [dataAttribute];
 				WriteAccessHandlerInfo info;
@@ -761,7 +1283,7 @@ namespace IEC61850
 
 			private Dictionary<IntPtr, WriteAccessHandlerInfo> writeAccessHandlers = new Dictionary<IntPtr, WriteAccessHandlerInfo> ();
 
-			private void connectionIndicationHandler (IntPtr iedServer, IntPtr clientConnection, bool connected, IntPtr parameter)
+			private void ConnectionIndicationHandlerImpl (IntPtr iedServer, IntPtr clientConnection, bool connected, IntPtr parameter)
 			{
 				if (connected == false) {
 					ClientConnection con = null;
@@ -785,9 +1307,7 @@ namespace IEC61850
 				}
 			}
 
-			private Dictionary<IntPtr, ClientConnection> clientConnections = new Dictionary<IntPtr, ClientConnection> ();
-
-
+			internal Dictionary<IntPtr, ClientConnection> clientConnections = new Dictionary<IntPtr, ClientConnection> ();
 
 			public IedServer(IedModel iedModel, IedServerConfig config = null)
 			{
@@ -849,7 +1369,7 @@ namespace IEC61850
 			public void Start(int tcpPort)
 			{
 				if (internalConnectionHandler == null)
-					internalConnectionHandler = new InternalConnectionHandler (connectionIndicationHandler);					
+					internalConnectionHandler = new InternalConnectionHandler (ConnectionIndicationHandlerImpl);					
 
 				IedServer_setConnectionIndicationHandler (self, internalConnectionHandler, IntPtr.Zero);
 
@@ -883,12 +1403,36 @@ namespace IEC61850
 				internalConnectionHandler = null;
 			}
 
+            /// <summary>
+            /// Set the identify for the MMS identify service
+            /// </summary>
+            /// <param name="vendor">the IED vendor name</param>
+            /// <param name="model">the IED model name</param>
+            /// <param name="revision">the IED revision/version number</param>
+            public void SetServerIdentity(string vendor, string model, string revision)
+            {
+                IedServer_setServerIdentity(self, vendor, model, revision);
+            }
+
+            /// <summary>
+            /// Check if server is running (accepting client connections)
+            /// </summary>
+            /// <returns><c>true</c>, if running, <c>false</c> otherwise.</returns>
 			public bool IsRunning()
+            {
+                return IedServer_isRunning(self);
+            }
+
+			/// <summary>
+			/// Get number of open MMS connections
+			/// </summary>
+			/// <returns>the number of open and accepted MMS connections</returns>
+			public int GetNumberOfOpenConnections()
 			{
-				return IedServer_isRunning(self);
+				return IedServer_getNumberOfOpenConnections(self);
 			}
 
-			private ControlHandlerInfo GetControlHandlerInfo(DataObject controlObject)
+            private ControlHandlerInfo GetControlHandlerInfo(DataObject controlObject)
 			{
 				ControlHandlerInfo info;
 
@@ -910,7 +1454,7 @@ namespace IEC61850
 				info.controlHandlerParameter = parameter;
 
 				if (internalControlHandlerRef == null)
-					internalControlHandlerRef = new InternalControlHandler (internalControlHandler);
+					internalControlHandlerRef = new InternalControlHandler (InternalControlHandlerImpl);
 
 				IedServer_setControlHandler(self, controlObject.self, internalControlHandlerRef, GCHandle.ToIntPtr(info.handle));
 			}
@@ -923,7 +1467,7 @@ namespace IEC61850
 				info.checkHandlerParameter = parameter;
 
 				if (internalControlPerformCheckHandlerRef == null)
-					internalControlPerformCheckHandlerRef = new InternalControlPerformCheckHandler (internalCheckHandler);
+					internalControlPerformCheckHandlerRef = new InternalControlPerformCheckHandler (InternalCheckHandlerImpl);
 
 				IedServer_setPerformCheckHandler(self, controlObject.self, internalControlPerformCheckHandlerRef, GCHandle.ToIntPtr(info.handle));
 			}
@@ -936,7 +1480,7 @@ namespace IEC61850
 				info.waitForExecHandlerParameter = parameter;
 
 				if (internalControlWaitForExecutionHandlerRef == null)
-					internalControlWaitForExecutionHandlerRef = new InternalControlWaitForExecutionHandler (internalControlWaitForExecutionHandler);
+					internalControlWaitForExecutionHandlerRef = new InternalControlWaitForExecutionHandler (InternalControlWaitForExecutionHandlerImpl);
 
 				IedServer_setWaitForExecutionHandler(self, controlObject.self, internalControlWaitForExecutionHandlerRef, GCHandle.ToIntPtr(info.handle));
 			}
@@ -946,7 +1490,7 @@ namespace IEC61850
 				writeAccessHandlers.Add (dataAttr.self, new WriteAccessHandlerInfo(handler, parameter, dataAttr));
 				//writeAccessHandlers.Item [dataAttr.self] = handler;
 
-				IedServer_handleWriteAccess (self, dataAttr.self, writeAccessHandler, IntPtr.Zero);
+				IedServer_handleWriteAccess (self, dataAttr.self, WriteAccessHandlerImpl, IntPtr.Zero);
 			}
 
 			public void SetWriteAccessPolicy(FunctionalConstraint fc, AccessPolicy policy)

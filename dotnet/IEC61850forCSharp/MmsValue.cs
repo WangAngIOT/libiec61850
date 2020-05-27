@@ -32,7 +32,6 @@ namespace IEC61850
 {
 	namespace Common
 	{
-
         /// <summary>
         /// This class is used to hold MMS data values of different types.
         /// </summary>
@@ -58,12 +57,21 @@ namespace IEC61850
 			static extern bool MmsValue_getBoolean (IntPtr self);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern void MmsValue_setBoolean(IntPtr self, [MarshalAs(UnmanagedType.I1)] bool value);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern UInt32 MmsValue_getBitStringAsInteger (IntPtr self);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern void MmsValue_setBitStringFromInteger(IntPtr self, UInt32 intValue);
 
-			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern UInt32 MmsValue_getBitStringAsIntegerBigEndian(IntPtr self);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern void MmsValue_setBitStringFromIntegerBigEndian(IntPtr self, UInt32 intValue);
+
+            [DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern int MmsValue_getBitStringSize(IntPtr self);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
@@ -75,6 +83,9 @@ namespace IEC61850
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern Int32 MmsValue_toInt32 (IntPtr self);
+
+			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
+			static extern void MmsValue_setInt32(IntPtr self, int value);			
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern Int64 MmsValue_toInt64 (IntPtr self);
@@ -173,7 +184,10 @@ namespace IEC61850
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern ulong MmsValue_getBinaryTimeAsUtcMs (IntPtr self);
 
-			[DllImport("iec61850", CallingConvention=CallingConvention.Cdecl)]
+            [DllImport ("iec61850", CallingConvention = CallingConvention.Cdecl)]
+            static extern IntPtr MmsValue_newUtcTimeByMsTime (UInt64 timestamp);
+
+            [DllImport("iec61850", CallingConvention=CallingConvention.Cdecl)]
 			static extern int MmsValue_getDataAccessError(IntPtr self);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
@@ -390,6 +404,18 @@ namespace IEC61850
 			}
 
             /// <summary>
+            /// Create a new MmsValue instance of type MMS_UTC_TIME
+            /// </summary>
+            /// <returns>the new MmsValue instance.</returns>
+            /// <param name="timestamp">the time value as milliseconds since epoch (1.1.1970 UTC).</param>
+            public static MmsValue NewUtcTime (UInt64 timestamp)
+            {
+                IntPtr newValue = MmsValue_newUtcTimeByMsTime (timestamp);
+
+                return new MmsValue (newValue, true);
+            }
+
+            /// <summary>
             /// Gets the type of the value
             /// </summary>
             /// <returns>
@@ -507,40 +533,60 @@ namespace IEC61850
 					throw new MmsValueException ("Value is of wrong type");
 			}
 
-			/// <summary>
-			/// Sets the element of an array of structure
-			/// </summary>
-			/// <param name="index">index of the element starting with 0</param>
-			/// <param name="elementValue">MmsValue instance that will be used as element value</param>
-			/// <exception cref="MmsValueException">This exception is thrown if the value has the wrong type.</exception>
-			/// <exception cref="MmsValueException">This exception is thrown if the index is out of range.</exception>
-			public void SetElement(int index, MmsValue elementValue)
-			{
-				MmsType elementType = GetType ();
+            /// <summary>
+            /// Sets the element of an array or structure
+            /// </summary>
+            /// <remarks>
+            /// After calling this function the native memory of the element will be managed by the array or structure. 
+            /// Therefore an element can only be used in a single array or structure. 
+            /// When the value is required in multiple arrays or structures
+            /// a clone has to be created before using this function!
+            /// To be save, always use a clone for setting the element.
+            /// </remarks>
+            /// <param name="index">index of the element starting with 0</param>
+            /// <param name="elementValue">MmsValue instance that will be used as element value</param>
+            /// <exception cref="MmsValueException">This exception is thrown if the value has the wrong type.</exception>
+            /// <exception cref="MmsValueException">This exception is thrown if the index is out of range.</exception>
+            public void SetElement(int index, MmsValue elementValue)
+            {
+                MmsType elementType = GetType();
 
-				if ((elementType == MmsType.MMS_ARRAY) || (elementType == MmsType.MMS_STRUCTURE)) {
-				
-					if ((index >= 0) && (index < Size ())) {
-						MmsValue_setElement (valueReference, index, elementValue.valueReference);
-					
-					} else
-						throw new MmsValueException ("Index out of bounds");
-				
-				} else
-					throw new MmsValueException ("Value is of wrong type");
+                if ((elementType == MmsType.MMS_ARRAY) || (elementType == MmsType.MMS_STRUCTURE))
+                {
 
-			}
+                    if ((index >= 0) && (index < Size()))
+                    {
 
-			public MmsDataAccessError GetDataAccessError ()
-			{
-				if (GetType () == MmsType.MMS_DATA_ACCESS_ERROR) {
-					int errorCode = MmsValue_getDataAccessError (valueReference);
+                        if (elementValue != null)
+                        {
+                            MmsValue_setElement(valueReference, index, elementValue.valueReference);
 
-					return (MmsDataAccessError)errorCode;
-				}
-				else
-					throw new MmsValueException ("Value is of wrong type");
-			}
+                            /* will be deleted by structure */
+                            elementValue.responsableForDeletion = false;
+                        }
+                        else
+                            MmsValue_setElement(valueReference, index, IntPtr.Zero);
+
+                    }
+                    else
+                        throw new MmsValueException("Index out of bounds");
+
+                }
+                else
+                    throw new MmsValueException("Value is of wrong type");
+            }
+
+            public MmsDataAccessError GetDataAccessError()
+            {
+                if (GetType() == MmsType.MMS_DATA_ACCESS_ERROR)
+                {
+                    int errorCode = MmsValue_getDataAccessError(valueReference);
+
+                    return (MmsDataAccessError)errorCode;
+                }
+                else
+                    throw new MmsValueException("Value is of wrong type");
+            }
 
             /// <summary>
             /// Gets the timestamp value as UTC time in s (UNIX time stamp).
@@ -716,17 +762,32 @@ namespace IEC61850
 				return MmsValue_toInt32 (valueReference);
 			}
 
-            /// <summary>
-            /// Return the value as 64 bit signed integer.
-            /// </summary>
-            /// <description>
-            /// Return the value as 64 bit signed integer (Int64).
-            /// The value has to be of type MMS_INTEGER.
-            /// </description>
-            /// <returns>
-            /// the value if the object as 64 bit signed integer
-            /// </returns>
-            /// <exception cref="MmsValueException">This exception is thrown if the value has the wrong type.</exception>
+			/// <summary>
+			/// Sets the 32 bit signed integer.
+			/// </summary>
+			/// <param name='value'>
+			/// the new value to set
+			/// </param>
+			/// <exception cref="MmsValueException">This exception is thrown if the value has the wrong type.</exception>
+			public void SetInt32(int value)
+			{
+				if (GetType() != MmsType.MMS_INTEGER)
+					throw new MmsValueException("Value type is not integer");
+
+				MmsValue_setInt32(valueReference, value);
+			}
+
+			/// <summary>
+			/// Return the value as 64 bit signed integer.
+			/// </summary>
+			/// <description>
+			/// Return the value as 64 bit signed integer (Int64).
+			/// The value has to be of type MMS_INTEGER.
+			/// </description>
+			/// <returns>
+			/// the value if the object as 64 bit signed integer
+			/// </returns>
+			/// <exception cref="MmsValueException">This exception is thrown if the value has the wrong type.</exception>
 			public Int64 ToInt64 ()
 			{
 				if (GetType () != MmsType.MMS_INTEGER)
@@ -770,7 +831,23 @@ namespace IEC61850
 				MmsValue_setBitStringFromInteger(valueReference, intValue);
 			}
 
-			public void SetBit (int bitPos, bool bitValue)
+            public UInt32 BitStringToUInt32BigEndian()
+            {
+                if (GetType() != MmsType.MMS_BIT_STRING)
+                    throw new MmsValueException("Value type is not bit string");
+
+                return MmsValue_getBitStringAsIntegerBigEndian(valueReference);
+            }
+
+            public void BitStringFromUInt32BigEndian(UInt32 intValue)
+            {
+                if (GetType() != MmsType.MMS_BIT_STRING)
+                    throw new MmsValueException("Value type is not bit string");
+
+                MmsValue_setBitStringFromIntegerBigEndian(valueReference, intValue);
+            }
+
+            public void SetBit (int bitPos, bool bitValue)
 			{
 				if (GetType () != MmsType.MMS_BIT_STRING)
 					throw new MmsValueException("Value type is not bit string");
@@ -821,13 +898,28 @@ namespace IEC61850
 					throw new MmsValueException ("Value type is not boolean");
 			}
 
-            /// <summary>
-            /// Gets the float value of an MMS_FLOAT instance
-            /// </summary>
-            /// <returns>
-            /// The float value
-            /// </returns>
-            /// <exception cref="MmsValueException">This exception is thrown if the value has the wrong type.</exception>
+			/// <summary>
+			/// Sets the boolean value of an MMS_BOOLEAN instance
+			/// </summary>
+			/// <param name='value'>
+			/// the new value to set
+			/// </param>
+			/// <exception cref="MmsValueException">This exception is thrown if the value has the wrong type.</exception>
+			public void SetBoolean(bool value)
+			{
+				if (GetType() != MmsType.MMS_BOOLEAN)
+					throw new MmsValueException("Value type is not boolean");
+
+				MmsValue_setBoolean(valueReference, value);
+			}
+
+			/// <summary>
+			/// Gets the float value of an MMS_FLOAT instance
+			/// </summary>
+			/// <returns>
+			/// The float value
+			/// </returns>
+			/// <exception cref="MmsValueException">This exception is thrown if the value has the wrong type.</exception>
 			public float ToFloat ()
 			{
 				if (GetType () == MmsType.MMS_FLOAT)

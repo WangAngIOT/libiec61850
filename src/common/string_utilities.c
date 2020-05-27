@@ -30,9 +30,11 @@ StringUtils_copySubString(char* startPos, char* endPos)
 
 	char* newString = (char*) GLOBAL_MALLOC(newStringLength + 1);
 
-	memcpy(newString, startPos, newStringLength);
+	if (newString) {
+	    memcpy(newString, startPos, newStringLength);
 
-	newString[newStringLength] = 0;
+	    newString[newStringLength] = 0;
+	}
 
 	return newString;
 }
@@ -44,7 +46,8 @@ StringUtils_copyString(const char* string)
 
 	char* newString = (char*) GLOBAL_MALLOC(newStringLength);
 
-	memcpy(newString, string, newStringLength);
+	if (newString)
+	    memcpy(newString, string, newStringLength);
 
 	return newString;
 }
@@ -65,8 +68,10 @@ StringUtils_createStringFromBuffer(const uint8_t* buf, int size)
 {
 	char* newStr = (char*) GLOBAL_MALLOC(size + 1);
 
-	memcpy(newStr, buf, size);
-	newStr[size] = 0;
+	if (newStr) {
+	    memcpy(newStr, buf, size);
+	    newStr[size] = 0;
+	}
 
 	return newStr;
 }
@@ -120,18 +125,20 @@ StringUtils_createString(int count, ...)
 	va_end(ap);
 
 	newStr = (char*) GLOBAL_MALLOC(newStringLength + 1);
-	currentPos = newStr;
 
+	if (newStr) {
+	    currentPos = newStr;
 
-	va_start(ap, count);
-	for (i = 0; i < count; i++) {
-		char* str = va_arg(ap, char*);
-		strcpy(currentPos, str);
-		currentPos += strlen(str);
+	    va_start(ap, count);
+	    for (i = 0; i < count; i++) {
+	        char* str = va_arg(ap, char*);
+	        strcpy(currentPos, str);
+	        currentPos += strlen(str);
+	    }
+	    va_end(ap);
+
+	    *currentPos = 0;
 	}
-	va_end(ap);
-
-	*currentPos = 0;
 
 	return newStr;
 }
@@ -378,3 +385,127 @@ StringUtils_sortList(LinkedList list)
 	list->next = sortedList->next;
 }
 
+static bool
+convertHexStrToUint16(char* hexStr, uint16_t* result)
+{
+    int strSize = strlen(hexStr);
+
+    if (strSize > 4)
+        return false;
+
+    int val = 0;
+    int i;
+    int nibble;
+
+    for (i = 0; i < strSize; i++) {
+        char nibbleChar = hexStr[i];
+
+        if ((nibbleChar > 47) && (nibbleChar < 58)) {
+            nibble = nibbleChar - 48;
+        }
+        else if ((nibbleChar > 96) && (nibbleChar < 103)) {
+            nibble = nibbleChar - 87;
+        }
+        else if ((nibbleChar > 64) && (nibbleChar < 71)) {
+            nibble = nibbleChar - 55;
+        }
+        else {
+            return false;
+        }
+
+        val <<= 4;
+        val += nibble;
+    }
+
+    *result = val;
+
+    return true;
+}
+
+bool
+StringUtils_convertIPv6AdddressStringToByteArray(const char* addressString, uint8_t ipV6Addr[])
+{
+    char tokenBuf[100];
+
+    uint16_t addrBlocks[8];
+
+    int blockCount = 0;
+    int emptyBlockIndex = 0;
+    bool hasEmptyBlock = false;
+    bool end = false;
+
+    char* savePtr = (char*) addressString;
+    char* sepPos = strchr(savePtr, ':');
+
+    while (sepPos) {
+
+        memcpy(tokenBuf, savePtr, sepPos - savePtr);
+        tokenBuf[sepPos - savePtr] = 0;
+        savePtr = sepPos + 1;
+
+        if (strlen(tokenBuf) == 0) {
+
+            if (hasEmptyBlock) {
+                return false;
+            }
+
+            hasEmptyBlock = true;
+            emptyBlockIndex = blockCount;
+        }
+        else {
+            uint16_t blockVal;
+
+            if (convertHexStrToUint16(tokenBuf, &blockVal) == false)
+                return false;
+
+            addrBlocks[blockCount] = blockVal;
+
+            blockCount ++;
+        }
+
+        if (blockCount == 8)
+            break;
+
+        if (end)
+            break;
+
+        sepPos = strchr(savePtr, ':');
+
+        if (sepPos == NULL) {
+            if (*savePtr != 0)
+                sepPos = strchr(savePtr, 0);
+            end = true;
+        }
+    }
+
+    if (hasEmptyBlock) {
+        /* shift blocks */
+        int shiftBlocks = blockCount - emptyBlockIndex;
+        int shift = 8 - blockCount;
+
+        int s;
+
+        /* fill empty blocks with zero */
+        for (s = blockCount; s < 8; s++) {
+            addrBlocks[s] = 0;
+            blockCount++;
+        }
+
+        for (s = 0; s < shiftBlocks; s++) {
+            addrBlocks[s + emptyBlockIndex + shift] =  addrBlocks[s + emptyBlockIndex];
+            addrBlocks[s + emptyBlockIndex] = 0;
+        }
+    }
+
+    if (blockCount != 8)
+        return false;
+
+    int i = 0;
+
+    for (i = 0; i < 8; i++) {
+        ipV6Addr[(i * 2)] = addrBlocks[i] / 0x100;
+        ipV6Addr[(i * 2) + 1] = addrBlocks[i] & 0xff;
+    }
+
+    return true;
+}
