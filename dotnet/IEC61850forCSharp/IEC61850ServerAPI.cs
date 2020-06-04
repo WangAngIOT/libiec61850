@@ -1315,7 +1315,7 @@ namespace IEC61850
 			static extern IntPtr IedServer_getMmsServer(IntPtr self);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
-			static extern IntPtr MmsServer_setFilestoreBasepath(IntPtr selfMmsServer, string basepath);
+			static extern void IedServer_setFilestoreBasepath(IntPtr self, string basepath);
 
 			[DllImport("iec61850", CallingConvention = CallingConvention.Cdecl)]
 			static extern IntPtr MmsServerConnection_getFilesystemBasepath(IntPtr selfMmsServer);
@@ -1839,8 +1839,7 @@ namespace IEC61850
 
 			public void SetFilestoreBasepath(string basepath)
 			{
-				IntPtr mmsServer = IedServer_getMmsServer(self);
-				MmsServer_setFilestoreBasepath(mmsServer, basepath);
+				IedServer_setFilestoreBasepath(self, basepath);
 			}
 
 			public void LockDataModel()
