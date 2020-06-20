@@ -294,14 +294,16 @@ executeStateMachine:
         }
 
         if (dynamicCheckResult == CONTROL_RESULT_FAILED) {
-            if (isTimeActivatedControl) {
+            if ((self->errorValue != CONTROL_ERROR_NO_ERROR) || (self->addCauseValue != ADD_CAUSE_UNKNOWN)) {
                 ControlObject_sendLastApplError(self, self->mmsConnection, "Oper",
                         self->errorValue, self->addCauseValue,
                         self->ctlNum, self->origin, false);
             }
-            else
+
+            if (!isTimeActivatedControl) {
                 MmsServerConnection_sendWriteResponse(self->mmsConnection, self->operateInvokeId,
                         DATA_ACCESS_ERROR_OBJECT_ACCESS_DENIED, true);
+            }
 
             abortControlOperation(self);
             exitControlTask(self);
@@ -1698,6 +1700,18 @@ Control_writeAccessControlObject(MmsMapping* self, MmsDomain* domain, char* vari
             ControlObject_sendLastApplError(controlObject, connection, "Oper",
                     CONTROL_ERROR_NO_ERROR, ADD_CAUSE_OBJECT_NOT_SELECTED,
                         ctlNum, origin, true);
+
+            goto free_and_return;
+        }
+        else if ((state == STATE_OPERATE) || (state == STATE_WAIT_FOR_EXECUTION)) {
+            if (DEBUG_IED_SERVER)
+                printf("IED_SERVER: Oper failed - control already being executed!\n");
+
+            indication = DATA_ACCESS_ERROR_TEMPORARILY_UNAVAILABLE;
+
+            ControlObject_sendLastApplError(controlObject, connection, "Oper",
+                    CONTROL_ERROR_NO_ERROR, ADD_CAUSE_COMMAND_ALREADY_IN_EXECUTION,
+                    ctlNum, origin, true);
 
             goto free_and_return;
         }
