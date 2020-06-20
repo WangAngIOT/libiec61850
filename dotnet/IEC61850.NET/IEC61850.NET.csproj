@@ -8,7 +8,7 @@
     <DebugSymbols>false</DebugSymbols>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Description>IEC61850.NET</Description>
-    <Version>1.4.2</Version>
+    <Version>1.4.2.1</Version>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|netstandard2.0|AnyCPU'">
