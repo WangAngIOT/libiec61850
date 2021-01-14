@@ -1,7 +1,7 @@
+package com.libiec61850.scl.model;
+
 /*
- *  mms_value_cache.h
- *
- *  Copyright 2013-2018 Michael Zillgith
+ *  Copyright 2013-2020 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -21,24 +21,24 @@
  *  See COPYING file for the complete license text.
  */
 
-#ifndef MMS_VARIABLE_CACHE_H_
-#define MMS_VARIABLE_CACHE_H_
+import org.w3c.dom.Node;
 
-#include "mms_device_model.h"
-#include "mms_value.h"
+import com.libiec61850.scl.ParserUtils;
 
-typedef struct sMmsValueCache* MmsValueCache;
+public class Services {
 
-LIB61850_INTERNAL MmsValueCache
-MmsValueCache_create(MmsDomain* domain);
-
-LIB61850_INTERNAL void
-MmsValueCache_insertValue(MmsValueCache self, char* itemId, MmsValue* value);
-
-LIB61850_INTERNAL MmsValue*
-MmsValueCache_lookupValue(MmsValueCache self, const char* itemId, MmsVariableSpecification** outSpec);
-
-LIB61850_INTERNAL void
-MmsValueCache_destroy(MmsValueCache self);
-
-#endif /* MMS_VARIABLE_CACHE_H_ */
+    private Node self;
+    
+    public Services(Node servicesNode) {
+        self = servicesNode;
+    }
+    
+    public ReportSettings getReportSettings()
+    {
+        Node reportSettingsNode = ParserUtils.getChildNodeWithTag(self, "ReportSettings");
+        
+        if (reportSettingsNode != null)
+            return new ReportSettings(reportSettingsNode);
+        return null;
+    }
+}

@@ -60,9 +60,11 @@ import com.libiec61850.scl.model.LogControl;
 import com.libiec61850.scl.model.LogicalDevice;
 import com.libiec61850.scl.model.LogicalNode;
 import com.libiec61850.scl.model.ReportControlBlock;
+import com.libiec61850.scl.model.ReportSettings;
 import com.libiec61850.scl.model.RptEnabled;
 import com.libiec61850.scl.model.SampledValueControl;
 import com.libiec61850.scl.model.Server;
+import com.libiec61850.scl.model.Services;
 import com.libiec61850.scl.model.SettingControl;
 import com.libiec61850.scl.model.TriggerOptions;
 
@@ -113,6 +115,8 @@ public class StaticModelGenerator {
 	private boolean initializeOnce;
 	
 	private SclParser sclParser;
+	
+    private boolean hasOwner = false;
 
     public StaticModelGenerator(InputStream stream, String icdFile, PrintStream cOut, PrintStream hOut,
     		String outputFileName, String iedName, String accessPointName, String modelPrefix,
@@ -162,6 +166,16 @@ public class StaticModelGenerator {
 
         if (ied == null)
             System.out.println("IED model not found in SCL file! Exit.");
+        
+        Services services = ied.getServices();
+        
+        if (services != null) {
+            ReportSettings rptSettings = services.getReportSettings();
+            
+            if (rptSettings != null) {
+                hasOwner = rptSettings.hasOwner();
+            }
+        }
        
         accessPoint = null;
 
@@ -1028,77 +1042,83 @@ public class StaticModelGenerator {
         for (GSEControl gseControlBlock : gseControlBlocks) {
 
             GSE gse = connectedAP.lookupGSE(logicalDeviceName, gseControlBlock.getName());
-
-            PhyComAddress gseAddress = gse.getAddress();
             
-            String gseString = "";
+            if (gse != null) {
+                PhyComAddress gseAddress = gse.getAddress();
+                
+                String gseString = "";
 
-            String phyComAddrName = "";
+                String phyComAddrName = "";
 
-            if (gseAddress != null) {
-                phyComAddrName = lnPrefix + "_gse" + gseControlNumber + "_address";
+                if (gseAddress != null) {
+                    phyComAddrName = lnPrefix + "_gse" + gseControlNumber + "_address";
 
-                gseString += "\nstatic PhyComAddress " + phyComAddrName + " = {\n";
-                gseString += "  " + gseAddress.getVlanPriority() + ",\n";
-                gseString += "  " + gseAddress.getVlanId() + ",\n";
-                gseString += "  " + gseAddress.getAppId() + ",\n";
-                gseString += "  {";
+                    gseString += "\nstatic PhyComAddress " + phyComAddrName + " = {\n";
+                    gseString += "  " + gseAddress.getVlanPriority() + ",\n";
+                    gseString += "  " + gseAddress.getVlanId() + ",\n";
+                    gseString += "  " + gseAddress.getAppId() + ",\n";
+                    gseString += "  {";
 
-                for (int i = 0; i < 6; i++) {
-                    gseString += "0x" + Integer.toHexString(gseAddress.getMacAddress()[i]);
-                    if (i == 5)
-                        gseString += "}\n";
-                    else
-                        gseString += ", ";
+                    for (int i = 0; i < 6; i++) {
+                        gseString += "0x" + Integer.toHexString(gseAddress.getMacAddress()[i]);
+                        if (i == 5)
+                            gseString += "}\n";
+                        else
+                            gseString += ", ";
+                    }
+
+                    gseString += "};\n\n";
                 }
 
-                gseString += "};\n\n";
+                String gseVariableName = lnPrefix + "_gse" + gseControlNumber;
+
+                gseString += "GSEControlBlock " + gseVariableName + " = {";
+                gseString += "&" + lnPrefix + ", ";
+
+                gseString += "\"" + gseControlBlock.getName() + "\", ";
+
+                if (gseControlBlock.getAppID() == null)
+                    gseString += "NULL, ";
+                else
+                    gseString += "\"" + gseControlBlock.getAppID() + "\", ";
+
+                if (gseControlBlock.getDataSet() != null)
+                    gseString += "\"" + gseControlBlock.getDataSet() + "\", ";
+                else
+                    gseString += "NULL, ";
+
+                gseString += gseControlBlock.getConfRev() + ", ";
+
+                if (gseControlBlock.isFixedOffs())
+                    gseString += "true, ";
+                else
+                    gseString += "false, ";
+
+                if (gseAddress != null)
+                    gseString += "&" + phyComAddrName + ", ";
+                else
+                    gseString += "NULL, ";
+                
+                gseString += gse.getMinTime() + ", ";
+                gseString += gse.getMaxTime() + ", ";
+
+                currentGseVariableNumber++;
+                
+                if (currentGseVariableNumber < gseVariableNames.size())
+                    gseString += "&" + gseVariableNames.get(currentGseVariableNumber);
+                else
+                    gseString += "NULL";
+
+                gseString += "};\n";
+
+                this.gseControlBlocks.append(gseString);
+
+                gseControlNumber++;
+            }
+            else {
+                System.out.println("GSE not found for GoCB " + gseControlBlock.getName());
             }
 
-            String gseVariableName = lnPrefix + "_gse" + gseControlNumber;
-
-            gseString += "GSEControlBlock " + gseVariableName + " = {";
-            gseString += "&" + lnPrefix + ", ";
-
-            gseString += "\"" + gseControlBlock.getName() + "\", ";
-
-            if (gseControlBlock.getAppID() == null)
-                gseString += "NULL, ";
-            else
-                gseString += "\"" + gseControlBlock.getAppID() + "\", ";
-
-            if (gseControlBlock.getDataSet() != null)
-                gseString += "\"" + gseControlBlock.getDataSet() + "\", ";
-            else
-                gseString += "NULL, ";
-
-            gseString += gseControlBlock.getConfRev() + ", ";
-
-            if (gseControlBlock.isFixedOffs())
-                gseString += "true, ";
-            else
-                gseString += "false, ";
-
-            if (gseAddress != null)
-                gseString += "&" + phyComAddrName + ", ";
-            else
-                gseString += "NULL, ";
-            
-            gseString += gse.getMinTime() + ", ";
-            gseString += gse.getMaxTime() + ", ";
-
-            currentGseVariableNumber++;
-            
-            if (currentGseVariableNumber < gseVariableNames.size())
-                gseString += "&" + gseVariableNames.get(currentGseVariableNumber);
-            else
-                gseString += "NULL";
-
-            gseString += "};\n";
-
-            this.gseControlBlocks.append(gseString);
-
-            gseControlNumber++;
         }
     }
     
@@ -1416,6 +1436,9 @@ public class StaticModelGenerator {
 
         if (rcb.getTriggerOptions() != null)
         	triggerOps = rcb.getTriggerOptions().getIntValue();
+        
+        if (hasOwner)
+            triggerOps += 64;
 
         rcbString += triggerOps + ", ";
 
@@ -1559,12 +1582,43 @@ public class StaticModelGenerator {
 
                         if (fcda.getDaName() != null)
                             mmsVariableName += "$" + toMmsString(fcda.getDaName());
-
-                        // TODO implement index processing!
+                        
+                        /* check for array index and component */
+                        
+                        int arrayStart = mmsVariableName.indexOf('(');
+                        
+                        String variableName = mmsVariableName;
+                        int arrayIndex = -1;
+                        String componentName = null;
+                        
+                        if (arrayStart != -1) {
+                            variableName = mmsVariableName.substring(0, arrayStart);
+                            
+                            int arrayEnd = mmsVariableName.indexOf(')');
+                            
+                            String arrayIndexStr = mmsVariableName.substring(arrayStart + 1, arrayEnd);
+                            arrayIndex = Integer.parseInt(arrayIndexStr);
+                            
+                            String componentNamePart = mmsVariableName.substring(arrayEnd + 1);
+                            
+                            if ((componentNamePart != null) && (componentNamePart.length() > 0)) {
+                                if (componentNamePart.charAt(0) == '$') {
+                                    componentNamePart = componentNamePart.substring(1);
+                                }
+                                
+                                if ((componentNamePart != null) && (componentNamePart.length() > 0))
+                                    componentName = componentNamePart;
+                            }
+                        }
+                        
                         cOut.println("  false,");
-                        cOut.println("  \"" + mmsVariableName + "\",");
-                        cOut.println("  -1,");
-                        cOut.println("  NULL,");
+                        cOut.println("  \"" + variableName + "\", ");
+                        cOut.println("  " + arrayIndex + ",");
+                        if (componentName == null)
+                            cOut.println("  NULL,");
+                        else
+                            cOut.println("  \"" + componentName + "\",");
+                        
                         cOut.println("  NULL,");
 
                         if (fcdaCount + 1 < numberOfFcdas)

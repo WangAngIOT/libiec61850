@@ -553,6 +553,8 @@ parseServiceError(uint8_t* buffer, int bufPos, int maxLength, MmsServiceError* e
         case 0xa3: /* serviceSpecificInfo */
             bufPos += length; /* ignore */
             break;
+        case 0x00: /* indefinite length end tag -> ignore */
+            break;
         default:
             bufPos += length; /* ignore */
             break;
@@ -604,6 +606,8 @@ mmsMsg_parseConfirmedErrorPDU(uint8_t* buffer, int bufPos, int maxBufPos, uint32
             bufPos = parseServiceError(buffer, bufPos, length, serviceError);
             if (bufPos < 0)
                 goto exit_error;
+            break;
+        case 0x00: /* indefinite length end tag -> ignore */
             break;
         default:
             bufPos += length; /* ignore */
@@ -673,7 +677,7 @@ exit_error:
     return -1;
 }
 
-static void
+void
 handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, MmsOutstandingCall outstandingCall, MmsError err)
 {
 
@@ -977,7 +981,7 @@ handleAsyncResponse(MmsConnection self, ByteBuffer* response, uint32_t bufPos, M
         removeFromOutstandingCalls(self, outstandingCall->invokeId);
 }
 
-static void
+static bool
 mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
 {
     MmsConnection self = (MmsConnection) parameter;
@@ -1018,7 +1022,7 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
             }
         }
 
-        return;
+        return true;
     }
 
     if (indication == ISO_IND_CLOSED) {
@@ -1031,7 +1035,7 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
         if (self->connectionLostHandler != NULL)
             self->connectionLostHandler(self, self->connectionLostHandlerParameter);
 
-        return;
+        return true;
     }
 
     if (indication == ISO_IND_ASSOCIATION_FAILED) {
@@ -1039,12 +1043,12 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
             printf("MMS_CLIENT: mmsIsoCallback: association failed!\n");
 
         setConnectionState(self, MMS_CONNECTION_STATE_CLOSING);
-        return;
+        return false;
     }
 
     if (payload != NULL) {
         if (ByteBuffer_getSize(payload) < 1) {
-            return;
+            return false;
         }
     }
 
@@ -1071,7 +1075,8 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
             }
             else {
                 setConnectionState(self, MMS_CONNECTION_STATE_CLOSING);
-                IsoClientConnection_close(self->isoClient);
+
+                goto exit_with_error;
             }
         }
         else {
@@ -1079,7 +1084,18 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
 
             if (DEBUG_MMS_CLIENT)
                 printf("MMS_CLIENT: Failed to parse initiate response!\n");
+
+            return false;
         }
+    }
+    else if (tag == 0xaa) { /* initiate error PDU */
+
+        if (DEBUG_MMS_CLIENT)
+              printf("MMS_CLIENT: received initiate error PDU\n");
+
+        setConnectionState(self, MMS_CONNECTION_STATE_CLOSING);
+
+        return false;
     }
     else if (tag == 0xa3) { /* unconfirmed PDU */
         handleUnconfirmedMmsPdu(self, payload);
@@ -1092,7 +1108,7 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
     }
     else if (tag == 0x8c) { /* conclude response PDU */
         if (DEBUG_MMS_CLIENT)
-            printf("MMS_CLIENT: received conclude.reponse+\n");
+            printf("MMS_CLIENT: received conclude.response+\n");
 
         if (self->concludeHandler) {
             self->concludeHandler(self->concludeHandlerParameter, MMS_ERROR_NONE, true);
@@ -1147,14 +1163,14 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
                     if (DEBUG_MMS_CLIENT)
                         printf("MMS_CLIENT: server sent unexpected confirmed error PDU!\n");
 
-                    return;
+                    return false;
                 }
             }
             else {
                 if (DEBUG_MMS_CLIENT)
                     printf("MMS_CLIENT: server sent confirmed error PDU without invoke ID!\n");
 
-                return;
+                return false;
             }
 
         }
@@ -1191,11 +1207,11 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
                     }
                 }
                 else {
-                    return;
+                    return false;
                 }
             }
             else {
-                return;
+                return false;
             }
 
         }
@@ -1243,7 +1259,7 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
                 if (DEBUG_MMS_CLIENT)
                     printf("MMS_CLIENT: unexpected message from server!\n");
 
-                return;
+                return false;
             }
         }
         else
@@ -1381,14 +1397,14 @@ mmsIsoCallback(IsoIndication indication, void* parameter, ByteBuffer* payload)
     if (DEBUG_MMS_CLIENT)
         printf("MMS_CLIENT: LEAVE mmsIsoCallback - OK\n");
 
-    return;
+    return true;
 
 exit_with_error:
 
     if (DEBUG_MMS_CLIENT)
         printf("MMS_CLIENT: received malformed message from server!\n");
 
-    return;
+    return false;
 }
 
 #if (CONFIG_MMS_THREADLESS_STACK == 0)
@@ -2443,15 +2459,19 @@ MmsConnection_readMultipleVariablesAsync(MmsConnection self, MmsError* mmsError,
 
     invokeId = getNextInvokeId(self);
 
-    mmsClient_createReadRequestMultipleValues(invokeId, domainId, items, payload);
+    if (mmsClient_createReadRequestMultipleValues(invokeId, domainId, items, payload) > 0) {
+        MmsClientInternalParameter intParam;
+        intParam.ptr = NULL;
 
-    MmsClientInternalParameter intParam;
-    intParam.ptr = NULL;
+        MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_MULTIPLE_VARIABLES, handler, parameter, intParam);
 
-    MmsError err = sendAsyncRequest(self, invokeId, payload, MMS_CALL_TYPE_READ_MULTIPLE_VARIABLES, handler, parameter, intParam);
-
-    if (mmsError)
-        *mmsError = err;
+        if (mmsError)
+            *mmsError = err;
+    }
+    else {
+        if (mmsError)
+            *mmsError = MMS_ERROR_RESOURCE_CAPABILITY_UNAVAILABLE;
+    }
 
 exit_function:
     return invokeId;

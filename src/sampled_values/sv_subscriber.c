@@ -156,16 +156,28 @@ static void
 svReceiverLoop(void* threadParameter)
 {
     SVReceiver self = (SVReceiver) threadParameter;
+    EthernetHandleSet handleSet = EthernetHandleSet_new();
+    EthernetHandleSet_addSocket(handleSet, self->ethSocket);
 
     self->stopped = false;
 
     while (self->running) {
+            switch (EthernetHandleSet_waitReady(handleSet, 100))
+            {
+            case -1:
+                if (DEBUG_SV_SUBSCRIBER)
+                    printf("SV_SUBSCRIBER: EhtnernetHandleSet_waitReady() failure\n");
+                break;
+            case 0:
+                break;
+            default:
+                SVReceiver_tick(self);
+            }
 
-        if (SVReceiver_tick(self) == false)
-            Thread_sleep(1);
     }
 
     self->stopped = true;
+    EthernetHandleSet_destroy(handleSet);
 }
 
 void
@@ -874,6 +886,12 @@ int
 SVSubscriber_ASDU_getDataSize(SVSubscriber_ASDU self)
 {
     return self->dataBufferLength;
+}
+
+uint8_t
+SVSubscriber_ASDU_getSmpSynch(SVSubscriber_ASDU self)
+{
+    return self->smpSynch[0];
 }
 
 uint16_t

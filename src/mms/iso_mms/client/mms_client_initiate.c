@@ -1,7 +1,7 @@
 /*
  *  mms_client_initiate.c
  *
- *  Copyright 2013-2017 Michael Zillgith
+ *  Copyright 2013-2020 Michael Zillgith
  *
  *  This file is part of libIEC61850.
  *
@@ -94,11 +94,11 @@ mmsClient_createInitiateRequest(MmsConnection self, ByteBuffer* message)
     buffer[bufPos++] = 0x01;
     buffer[bufPos++] = 0x01;
 
-    /* proposedParameterCBC */
+    /* proposedParameterCBC: fixed */
     buffer[bufPos++] = 0x81;
     buffer[bufPos++] = 0x03;
     buffer[bufPos++] = 0x05; /* padding */
-    buffer[bufPos++] = 0xf1;
+    buffer[bufPos++] = 0xf1; /* str1, str2, vnam, vlis, valt  */
     buffer[bufPos++] = 0x00;
 
     /* servicesSupportedCalling */
@@ -147,6 +147,9 @@ parseInitResponseDetail(MmsConnection self, uint8_t* buffer, int bufPos, int max
                 for (i = 0; i < 11; i++)
                      self->parameters.servicesSupported[i] = buffer[bufPos + i];
             }
+            break;
+
+        case 0x00: /* indefinite length end tag -> ignore */
             break;
 
         default:
@@ -219,6 +222,9 @@ mmsClient_parseInitiateResponse(MmsConnection self, ByteBuffer* response)
                 if (parseInitResponseDetail(self, buffer, bufPos, bufPos + length) == false)
                     return false;
             }
+            break;
+
+        case 0x00: /* indefinite length end tag -> ignore */
             break;
 
         default:

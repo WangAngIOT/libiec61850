@@ -1414,45 +1414,9 @@ isReportControlBlock(char* separator)
 #endif /* (CONFIG_IEC61850_REPORT_SERVICE == 1) */
 
 static bool
-isFunctionalConstraintCF(char* separator)
+isFunctionalConstraint(const char* fcStr, char* separator)
 {
-    if (strncmp(separator + 1, "CF", 2) == 0)
-        return true;
-    else
-        return false;
-}
-
-static bool
-isFunctionalConstraintDC(char* separator)
-{
-    if (strncmp(separator + 1, "DC", 2) == 0)
-        return true;
-    else
-        return false;
-}
-
-static bool
-isFunctionalConstraintSP(char* separator)
-{
-    if (strncmp(separator + 1, "SP", 2) == 0)
-        return true;
-    else
-        return false;
-}
-
-static bool
-isFunctionalConstraintSV(char* separator)
-{
-    if (strncmp(separator + 1, "SV", 2) == 0)
-        return true;
-    else
-        return false;
-}
-
-static bool
-isFunctionalConstraintSE(char* separator)
-{
-    if (strncmp(separator + 1, "SE", 2) == 0)
+    if (strncmp(separator + 1, fcStr, 2) == 0)
         return true;
     else
         return false;
@@ -1751,16 +1715,18 @@ checkIfValueBelongsToModelNode(DataAttribute* dataAttribute, MmsValue* value, Mm
 static FunctionalConstraint
 getFunctionalConstraintForWritableNode(MmsMapping* self, char* separator)
 {
-    if (isFunctionalConstraintCF(separator))
+    if (isFunctionalConstraint("CF", separator))
         return IEC61850_FC_CF;
-    if (isFunctionalConstraintDC(separator))
+    if (isFunctionalConstraint("DC", separator))
         return IEC61850_FC_DC;
-    if (isFunctionalConstraintSP(separator))
+    if (isFunctionalConstraint("SP", separator))
         return IEC61850_FC_SP;
-    if (isFunctionalConstraintSV(separator))
+    if (isFunctionalConstraint("SV", separator))
         return IEC61850_FC_SV;
-    if (isFunctionalConstraintSE(separator))
+    if (isFunctionalConstraint("SE", separator))
         return IEC61850_FC_SE;
+    if (isFunctionalConstraint("BL", separator))
+        return IEC61850_FC_BL;
 
     return IEC61850_FC_NONE;
 }
@@ -1798,6 +1764,13 @@ getAccessPolicyForFC(MmsMapping* self, FunctionalConstraint fc)
 
     if (fc == IEC61850_FC_SE) {
         if (self->iedServer->writeAccessPolicies & ALLOW_WRITE_ACCESS_SE)
+            return ACCESS_POLICY_ALLOW;
+        else
+            return ACCESS_POLICY_DENY;
+    }
+
+    if (fc == IEC61850_FC_BL) {
+        if (self->iedServer->writeAccessPolicies & ALLOW_WRITE_ACCESS_BL)
             return ACCESS_POLICY_ALLOW;
         else
             return ACCESS_POLICY_DENY;
@@ -1927,9 +1900,11 @@ mmsWriteHandler(void* parameter, MmsDomain* domain,
                     if ((val > 0) && (val <= sg->sgcb->numOfSGs)) {
                         if (val != sg->sgcb->actSG) {
 
+                            ClientConnection clientConnection = private_IedServer_getClientConnectionByHandle(self->iedServer, connection);
+
                             if (sg->actSgChangedHandler != NULL) {
                                 if (sg->actSgChangedHandler(sg->actSgChangedHandlerParameter, sg->sgcb,
-                                        (uint8_t) val, (ClientConnection) connection))
+                                        (uint8_t) val, clientConnection))
                                 {
                                     sg->sgcb->actSG = val;
 
@@ -1973,8 +1948,10 @@ mmsWriteHandler(void* parameter, MmsDomain* domain,
 
 						if (sg->editSgChangedHandler != NULL) {
 
+                            ClientConnection clientConnection = private_IedServer_getClientConnectionByHandle(self->iedServer, connection);
+
 							if (sg->editSgChangedHandler(sg->editSgChangedHandlerParameter, sg->sgcb,
-									(uint8_t) val, (ClientConnection) connection))
+									(uint8_t) val, clientConnection))
 							{
 								sg->sgcb->editSG = val;
 								sg->editingClient = (ClientConnection) connection;
@@ -2071,7 +2048,7 @@ mmsWriteHandler(void* parameter, MmsDomain* domain,
                 printf("IED_SERVER: write to %s policy:%i\n", variableId, nodeAccessPolicy);
 
 #if (CONFIG_IEC61850_SETTING_GROUPS == 1)
-            if (isFunctionalConstraintSE(separator)) {
+            if (isFunctionalConstraint("SE", separator)) {
                 SettingGroup* sg = getSettingGroupByMmsDomain(self, domain);
 
                 if (sg != NULL) {
@@ -2448,7 +2425,7 @@ mmsReadAccessHandler (void* parameter, MmsDomain* domain, char* variableId, MmsS
 #if (CONFIG_IEC61850_SETTING_GROUPS == 1)
 
     if (separator) {
-        if (isFunctionalConstraintSE(separator)) {
+        if (isFunctionalConstraint("SE", separator)) {
             SettingGroup* sg = getSettingGroupByMmsDomain(self, domain);
 
             if (sg != NULL) {
@@ -2507,6 +2484,11 @@ mmsReadAccessHandler (void* parameter, MmsDomain* domain, char* variableId, MmsS
                                 doEnd--;
 
                                 StringUtils_createStringFromBufferInBuffer(str, (uint8_t*) (doStart + 1), doEnd - doStart);
+                            }
+
+                            if (fc == IEC61850_FC_SP) {
+                                if (!strcmp(str, "SGCB"))
+                                    return DATA_ACCESS_ERROR_SUCCESS;
                             }
 
                             ModelNode* dobj = ModelNode_getChild((ModelNode*) ln, str);
@@ -2921,6 +2903,8 @@ MmsMapping_triggerGooseObservers(MmsMapping* self, MmsValue* value)
 {
     LinkedList element = self->gseControls;
 
+    bool modelLocked = self->isModelLocked;
+
     while ((element = LinkedList_getNext(element)) != NULL) {
         MmsGooseControlBlock gcb = (MmsGooseControlBlock) element->data;
 
@@ -2928,7 +2912,11 @@ MmsMapping_triggerGooseObservers(MmsMapping* self, MmsValue* value)
             DataSet* dataSet = MmsGooseControlBlock_getDataSet(gcb);
 
             if (DataSet_isMemberValue(dataSet, value, NULL)) {
-                MmsGooseControlBlock_observedObjectChanged(gcb);
+                MmsGooseControlBlock_setStateChangePending(gcb);
+
+                if (modelLocked == false) {
+                    MmsGooseControlBlock_publishNewState(gcb);
+                }
             }
         }
     }
@@ -3138,19 +3126,60 @@ MmsMapping_createDataSetByNamedVariableList(MmsMapping* self, MmsNamedVariableLi
 
         /* use variable name part of domain name as logicalDeviceName */
         dataSetEntry->logicalDeviceName = MmsDomain_getName(listEntry->domain) + strlen(self->model->name);
-
         dataSetEntry->variableName = listEntry->variableName;
         dataSetEntry->index = listEntry->arrayIndex;
         dataSetEntry->componentName = listEntry->componentName;
         dataSetEntry->sibling = NULL;
+        dataSetEntry->value = NULL;
 
         if (lastDataSetEntry == NULL)
             dataSet->fcdas =dataSetEntry;
         else
             lastDataSetEntry->sibling = dataSetEntry;
 
-        dataSetEntry->value =
-                MmsServer_getValueFromCache(self->mmsServer, listEntry->domain, listEntry->variableName);
+        MmsVariableSpecification* dataSetEntryVarSpec = NULL;
+
+        MmsValue* dataSetEntryValue = MmsServer_getValueFromCacheEx(self->mmsServer, listEntry->domain, listEntry->variableName, &dataSetEntryVarSpec);
+
+        if (dataSetEntryValue) {
+            if (dataSetEntry->index != -1) {
+                if (dataSetEntryVarSpec->type == MMS_ARRAY) {
+                    MmsValue* elementValue = MmsValue_getElement(dataSetEntryValue, dataSetEntry->index);
+
+                    if (elementValue) {
+
+                        if (dataSetEntry->componentName) {
+                            MmsVariableSpecification* elementType = dataSetEntryVarSpec->typeSpec.array.elementTypeSpec;
+
+                            MmsValue* subElementValue = MmsVariableSpecification_getChildValue(elementType, elementValue, dataSetEntry->componentName);
+
+                            if (subElementValue) {
+                                dataSetEntry->value = subElementValue;
+                            }
+                            else {
+                                if (DEBUG_IED_SERVER)
+                                    printf("IED_SERVER: ERROR - component %s of array element not found\n", dataSetEntry->componentName);
+                            }
+
+                        }
+                        else {
+                            dataSetEntry->value = elementValue;
+                        }
+                    }
+                    else {
+                        if (DEBUG_IED_SERVER)
+                            printf("IED_SERVER: ERROR - array element %i not found\n", dataSetEntry->index);
+                    }
+                }
+                else {
+                    if (DEBUG_IED_SERVER)
+                        printf("IED_SERVER: ERROR - variable %s/%s is not an array\n", dataSetEntry->logicalDeviceName, dataSetEntry->variableName);
+                }
+            }
+            else {
+                dataSetEntry->value = dataSetEntryValue;
+            }
+        }
 
         lastDataSetEntry = dataSetEntry;
 

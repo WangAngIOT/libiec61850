@@ -201,7 +201,10 @@ ClientReportControlBlock_getConfRev(ClientReportControlBlock self)
 int
 ClientReportControlBlock_getOptFlds(ClientReportControlBlock self)
 {
-    return (MmsValue_getBitStringAsInteger(self->optFlds) / 2);
+    if (self->optFlds)
+        return (MmsValue_getBitStringAsInteger(self->optFlds) / 2);
+    else
+        return 0;
 }
 
 void
@@ -695,11 +698,22 @@ IedConnection_getRCBValues(IedConnection self, IedClientError* error, const char
     if (returnRcb == NULL)
         returnRcb = ClientReportControlBlock_create(rcbReference);
 
-    clientReportControlBlock_updateValues(returnRcb, rcb);
+    if (clientReportControlBlock_updateValues(returnRcb, rcb)) {
+        *error = IED_ERROR_OK;
+    }
+    else {
+        if (DEBUG_IED_CLIENT)
+            printf("DEBUG_IED_CLIENT: getRCBValues returned wrong type!\n");
+
+        *error = IED_ERROR_TYPE_INCONSISTENT;
+
+        if (updateRcb == NULL) {
+            ClientReportControlBlock_destroy(returnRcb);
+            returnRcb = NULL;
+        }
+    }
 
     MmsValue_delete(rcb);
-
-    *error = IED_ERROR_OK;
 
     return returnRcb;
 }
@@ -998,6 +1012,9 @@ IedConnection_setRCBValuesAsync(IedConnection self, IedClientError* error, Clien
 
          if (err != MMS_ERROR_NONE) {
              iedConnection_releaseOutstandingCall(self, call);
+         }
+         else {
+             invokeId = call->invokeId;
          }
 
          goto exit_function;

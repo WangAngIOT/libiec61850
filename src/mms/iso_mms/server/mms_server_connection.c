@@ -387,6 +387,9 @@ handleConfirmedRequestPdu(
                 break;
 #endif /* (MMS_GET_DATA_SET_ATTRIBUTES == 1) */
 
+            case 0x00: /* indefinite length end tag -> ignore */
+                break;
+
             default:
                 mmsMsg_createMmsRejectPdu(&invokeId, MMS_ERROR_REJECT_UNRECOGNIZED_SERVICE, response);
                 return;
@@ -682,6 +685,9 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
             printf("MMS_SERVER: received reject PDU!\n");
         break;
 
+    case 0x00: /* indefinite length end tag -> ignore */
+        break;
+
     default:
         mmsMsg_createMmsRejectPdu(NULL, MMS_ERROR_REJECT_UNKNOWN_PDU_TYPE, response);
         break;
@@ -689,7 +695,7 @@ MmsServerConnection_parseMessage(MmsServerConnection self, ByteBuffer* message, 
 
     return;
 
-    parsing_error:
+parsing_error:
     if (DEBUG_MMS_SERVER)
         printf("MMS_SERVER: error parsing message\n");
 
